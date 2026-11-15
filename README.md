@@ -21,11 +21,11 @@ keys. RazorpayX test mode integration is planned for a later stage.
 
 ## Current state
 
-The Python package, mandate grammar, example policies, and parser are in
-place. The parser produces structured rules with source locations. Value and
-conflict checks, the runtime guard, payment adapter, and demo commands are
-still to come. Each part will be added and checked in a separate development
-checkpoint.
+The Python package, mandate grammar, example policies, parser, and validated
+data models are in place. The parser produces structured rules with source
+locations. Converting those rules into policy data, checking policy conflicts,
+the runtime guard, payment adapter, and demo commands are still to come.
+Each part will be added and checked in a separate development checkpoint.
 
 ## Mandate syntax
 
@@ -65,6 +65,14 @@ python -c 'from veto.mandate_parser import parse_mandate_file; print(parse_manda
 
 Syntax errors include the file, line, column, and a pointer to the problem.
 Parsing alone does not decide whether the mandate's rules are valid.
+
+## Policy and action data
+
+The [validated models](src/veto/models.py) represent spending caps, policy
+rules, and proposed actions. Money amounts use decimal values and reject
+fractions of a cent. Policy dates require a timezone offset. An agent's action
+does not carry a timestamp; the future runtime guard will use a trusted clock
+when it checks validity windows.
 
 ## Set up the development environment
 
