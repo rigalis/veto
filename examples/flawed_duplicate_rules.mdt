@@ -1,0 +1,9 @@
+# Expected policy error: both rules have the same id.
+mandate DuplicateRules {
+  rule Limit {
+    cap payout <= 50000 INR per 24h
+  }
+  rule Limit {
+    cap payout <= 10000 INR per 24h
+  }
+}

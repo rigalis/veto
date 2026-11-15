@@ -1,0 +1,9 @@
+# Expected policy error: the same merchant is both allowed and denied.
+mandate MerchantConflict {
+  rule Allowed {
+    allow_merchant "vendor_123"
+  }
+  rule Denied {
+    deny_merchant "vendor_123"
+  }
+}

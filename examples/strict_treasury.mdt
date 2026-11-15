@@ -1,0 +1,16 @@
+# Demo policy: a valid time window, a cap, approved vendors, and action order.
+mandate StrictTreasury {
+  rule TreasuryBounds {
+    valid_window 2026-01-01T00:00:00Z to 2035-01-01T00:00:00Z
+    cap payout <= 50000 INR per 24h
+    allow_merchant "vendor_123"
+    allow_merchant "vendor_456"
+    deny_merchant "vendor_blocked"
+  }
+  rule InvoiceFirst {
+    require invoice_match before payout
+  }
+  rule Order {
+    sequence [invoice_match, payout]
+  }
+}

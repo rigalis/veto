@@ -1,0 +1,6 @@
+# Expected policy warning: a zero cap makes payouts impossible.
+mandate ZeroCap {
+  rule Limit {
+    cap payout <= 0 INR per 24h
+  }
+}

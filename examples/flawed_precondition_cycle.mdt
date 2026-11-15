@@ -1,0 +1,9 @@
+# Expected policy error: neither action can happen first.
+mandate PreconditionCycle {
+  rule InvoiceFirst {
+    require invoice_match before payout
+  }
+  rule PayoutFirst {
+    require payout before invoice_match
+  }
+}

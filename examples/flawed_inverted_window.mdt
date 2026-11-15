@@ -1,0 +1,6 @@
+# Expected policy error: the end of the validity window precedes its start.
+mandate InvertedWindow {
+  rule Window {
+    valid_window 2035-01-01T00:00:00Z to 2026-01-01T00:00:00Z
+  }
+}

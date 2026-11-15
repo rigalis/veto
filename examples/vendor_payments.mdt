@@ -1,0 +1,12 @@
+# Basic vendor payout policy.
+mandate VendorPayments {
+  rule SpendingLimit {
+    cap payout <= 50000 INR per 24h
+    allow_merchant "vendor_123"
+    allow_merchant "vendor_456"
+    deny_merchant "vendor_blocked"
+  }
+  rule InvoiceFirst {
+    require invoice_match before payout
+  }
+}
