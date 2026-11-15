@@ -21,10 +21,11 @@ keys. RazorpayX test mode integration is planned for a later stage.
 
 ## Current state
 
-The Python package, mandate grammar, and example policies are in place. The
-grammar accepts the language's shape; value and conflict checks, the runtime
-guard, payment adapter, and demo commands are still to come. Each part will
-be added and checked in a separate development checkpoint.
+The Python package, mandate grammar, example policies, and parser are in
+place. The parser produces structured rules with source locations. Value and
+conflict checks, the runtime guard, payment adapter, and demo commands are
+still to come. Each part will be added and checked in a separate development
+checkpoint.
 
 ## Mandate syntax
 
@@ -55,6 +56,15 @@ action order for the planned demo. The files prefixed `flawed_` in
 [examples/](examples/) each show a specific mistake. The bare timestamp file
 is a syntax error now; the other mistakes will be diagnosed by later policy
 checks.
+
+To parse a mandate after installation:
+
+```bash
+python -c 'from veto.mandate_parser import parse_mandate_file; print(parse_mandate_file("examples/vendor_payments.mdt"))'
+```
+
+Syntax errors include the file, line, column, and a pointer to the problem.
+Parsing alone does not decide whether the mandate's rules are valid.
 
 ## Set up the development environment
 
