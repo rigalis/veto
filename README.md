@@ -21,9 +21,31 @@ keys. RazorpayX test mode integration is planned for a later stage.
 
 ## Current state
 
-Only the Python package setup is implemented so far. The mandate language,
-policy checks, guard, payment adapter, tests, and demo commands are still to come.
-Each part will be added and checked in a separate development checkpoint.
+The Python package and mandate grammar are implemented. The grammar accepts
+the language's shape; value and conflict checks, the runtime guard, payment
+adapter, and demo commands are still to come. Each part will be added and
+checked in a separate development checkpoint.
+
+## Mandate syntax
+
+```text
+mandate VendorPayments {
+  rule R1 {
+    cap payout <= 50000 INR per 24h
+    allow_merchant "vendor_123"
+    valid_window 2026-08-23T00:00:00Z to 2026-09-05T23:59:59Z
+  }
+  rule R2 {
+    require invoice_match before payout
+    sequence [invoice_match, payout]
+  }
+}
+```
+
+The grammar also supports `deny_merchant`, `payment` and `refund` actions,
+`USD` caps, and window units `s`, `m`, `h`, `d`, and `w`. Timestamps must carry
+an explicit UTC offset. See [the grammar](src/veto/mandate.lark) for the exact
+syntax.
 
 ## Set up the development environment
 
