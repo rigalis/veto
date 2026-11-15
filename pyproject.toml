@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "veto-payments"
 version = "0.1.0"
-description = "A policy compiler and runtime guard for agentic payments"
+description = "A policy verifier and runtime guard for agentic payments"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
