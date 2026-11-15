@@ -89,6 +89,11 @@ The `smt` extra provides Z3 for policy checks, `server` provides the planned
 API, and `dev` provides pytest. These extras are installed during development;
 the core package can also be installed with `python -m pip install -e .`.
 
+Run the current test suite with `python -m pytest -q`. GitHub Actions runs it
+on pushes and pull requests using Python 3.11 and 3.14. The workflow installs
+the core package and `dev` extra; later stages will extend it when the
+optional components need their own tests.
+
 ## Planned boundaries
 
 - The agent proposes actions; it does not decide whether they satisfy policy.
