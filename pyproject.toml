@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veto-payments"
+version = "0.1.0"
+description = "A policy compiler and runtime guard for agentic payments"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "lark>=1.1.9,<2",
+    "pydantic>=2.6,<3",
+    "httpx>=0.27,<1",
+    "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+smt = ["z3-solver>=4.13,<5"]
+server = ["fastapi>=0.110,<1", "uvicorn>=0.29,<1"]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
