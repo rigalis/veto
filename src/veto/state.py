@@ -40,6 +40,13 @@ class HistoryStore:
 
     def record_confirmed(self, event_id: str, executed: ExecutedAction) -> int:
         """Append once; an identical retry returns the original sequence id."""
+        with sqlite3.connect(self.path) as db:
+            return self._record_connection(db, event_id, executed)
+
+    @staticmethod
+    def _record_connection(
+        db: sqlite3.Connection, event_id: str, executed: ExecutedAction
+    ) -> int:
         if not isinstance(event_id, str):
             raise ValueError("event id must be text")
         event_id = event_id.strip()
@@ -54,40 +61,43 @@ class HistoryStore:
             action.merchant,
             executed.executed_at.isoformat(timespec="microseconds"),
         )
-        with sqlite3.connect(self.path) as db:
-            db.execute(
-                """
-                INSERT INTO confirmed_actions
-                    (event_id, action_type, amount, currency, merchant, executed_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(event_id) DO NOTHING
-                """,
-                payload,
+        db.execute(
+            """
+            INSERT INTO confirmed_actions
+                (event_id, action_type, amount, currency, merchant, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(event_id) DO NOTHING
+            """,
+            payload,
+        )
+        row = db.execute(
+            """
+            SELECT seq, event_id, action_type, amount, currency, merchant, executed_at
+            FROM confirmed_actions WHERE event_id = ?
+            """,
+            (event_id,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("confirmed action insert did not return a row")
+        if row[1:] != payload:
+            raise HistoryConflictError(
+                f"event id {event_id!r} already belongs to a different action"
             )
-            row = db.execute(
-                """
-                SELECT seq, event_id, action_type, amount, currency, merchant, executed_at
-                FROM confirmed_actions WHERE event_id = ?
-                """,
-                (event_id,),
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("confirmed action insert did not return a row")
-            if row[1:] != payload:
-                raise HistoryConflictError(
-                    f"event id {event_id!r} already belongs to a different action"
-                )
-            return row[0]
+        return row[0]
 
     def confirmed(self) -> tuple[ExecutedAction, ...]:
         """Return confirmed actions in insertion order for a gate evaluation."""
         with sqlite3.connect(self.path) as db:
-            rows = db.execute(
-                """
-                SELECT action_type, amount, currency, merchant, executed_at
-                FROM confirmed_actions ORDER BY seq
-                """
-            ).fetchall()
+            return self._confirmed_connection(db)
+
+    @staticmethod
+    def _confirmed_connection(db: sqlite3.Connection) -> tuple[ExecutedAction, ...]:
+        rows = db.execute(
+            """
+            SELECT action_type, amount, currency, merchant, executed_at
+            FROM confirmed_actions ORDER BY seq
+            """
+        ).fetchall()
         return tuple(
             ExecutedAction(
                 action=PaymentAction(

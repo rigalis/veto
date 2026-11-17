@@ -45,6 +45,8 @@ class AuditEvent(BaseModel):
     rule_id: str | None = None
     violation_code: str | None = None
     receipt_id: str | None = None
+    receipt_status: str | None = None
+    simulated: bool | None = None
 
     @field_validator("event_id")
     @classmethod
@@ -171,41 +173,56 @@ class AuditLog:
 
     def append(self, event: AuditEvent) -> AuditRecord:
         """Append under a write lock, refusing to extend a broken chain."""
-        payload = _canonical_json(event.model_dump(mode="json"))
         with sqlite3.connect(self.path) as db:
             db.execute("BEGIN IMMEDIATE")
-            report = self._verify_connection(db)
-            if not report.ok:
-                raise AuditIntegrityError(report)
+            return self._append_connection(db, event)
 
-            existing = db.execute(
-                "SELECT seq, payload, prev_hash, entry_hash FROM audit_entries WHERE event_id = ?",
-                (event.event_id,),
-            ).fetchone()
-            if existing is not None:
-                if existing[1] != payload:
-                    raise AuditEventConflictError(
-                        f"event id {event.event_id!r} already belongs to a different decision"
-                    )
-                return AuditRecord(existing[0], event, existing[2], existing[3])
+    @staticmethod
+    def _find_connection(db: sqlite3.Connection, event_id: str) -> AuditRecord | None:
+        row = db.execute(
+            "SELECT seq, payload, prev_hash, entry_hash FROM audit_entries WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return AuditRecord(row[0], AuditEvent.model_validate_json(row[1]), row[2], row[3])
 
-            last_seq, previous = db.execute(
-                "SELECT last_seq, head_hash FROM audit_meta WHERE id = 1"
-            ).fetchone()
-            seq = last_seq + 1
-            entry_hash = _entry_hash(previous, payload)
-            db.execute(
-                """
-                INSERT INTO audit_entries (seq, event_id, payload, prev_hash, entry_hash)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (seq, event.event_id, payload, previous, entry_hash),
-            )
-            db.execute(
-                "UPDATE audit_meta SET last_seq = ?, head_hash = ? WHERE id = 1",
-                (seq, entry_hash),
-            )
-            return AuditRecord(seq, event, previous, entry_hash)
+    @classmethod
+    def _append_connection(cls, db: sqlite3.Connection, event: AuditEvent) -> AuditRecord:
+        """Append inside a caller-owned write transaction."""
+        payload = _canonical_json(event.model_dump(mode="json"))
+        report = cls._verify_connection(db)
+        if not report.ok:
+            raise AuditIntegrityError(report)
+
+        existing = db.execute(
+            "SELECT seq, payload, prev_hash, entry_hash FROM audit_entries WHERE event_id = ?",
+            (event.event_id,),
+        ).fetchone()
+        if existing is not None:
+            if existing[1] != payload:
+                raise AuditEventConflictError(
+                    f"event id {event.event_id!r} already belongs to a different decision"
+                )
+            return AuditRecord(existing[0], event, existing[2], existing[3])
+
+        last_seq, previous = db.execute(
+            "SELECT last_seq, head_hash FROM audit_meta WHERE id = 1"
+        ).fetchone()
+        seq = last_seq + 1
+        entry_hash = _entry_hash(previous, payload)
+        db.execute(
+            """
+            INSERT INTO audit_entries (seq, event_id, payload, prev_hash, entry_hash)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (seq, event.event_id, payload, previous, entry_hash),
+        )
+        db.execute(
+            "UPDATE audit_meta SET last_seq = ?, head_hash = ? WHERE id = 1",
+            (seq, entry_hash),
+        )
+        return AuditRecord(seq, event, previous, entry_hash)
 
     def entries(self) -> tuple[AuditRecord, ...]:
         with sqlite3.connect(self.path) as db:

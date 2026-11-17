@@ -26,9 +26,9 @@ policy loader, both tiers of static checks, and VetoGate's policy checks are
 in place. VetoGate evaluates merchant rules, spending caps, validity windows,
 preconditions, and action order using confirmed action history. A SQLite store
 now preserves that history across plans and restarts. A separate hash-chained
-audit log is also in place. The pipeline that connects these pieces, payment
-adapter, and demo commands are still to come. Each part will be added and
-checked in a separate development checkpoint.
+audit log is also in place. The payment pipeline connects the guard, a
+pluggable executor, confirmed history, and audit records. A payout adapter and
+demo commands are still to come.
 
 ## Mandate syntax
 
@@ -139,9 +139,8 @@ with its stable event id and an `ExecutedAction` stamped by trusted code.
 Repeating the same event id and content is idempotent; reusing the id for a
 different action fails.
 
-Approval alone must not be recorded as execution. This stage supports a
-sequential demo: checking, executing, and recording are not yet one atomic
-operation across concurrent workers. The later pipeline will own that flow.
+Approval alone must not be recorded as execution. The pipeline records an
+action here only after its executor returns a confirmed receipt.
 
 ## Audit trail
 
@@ -155,8 +154,31 @@ and audit tables can share one database file.
 This is tamper-evident against local edits or deletion of entries. Someone
 who can rewrite the whole database and recompute the hashes could forge a new
 chain; external anchoring or signatures would be needed to resist that.
-VetoGate does not write audit entries yet. The next pipeline checkpoint will
-connect decisions to the log.
+The pipeline writes its decisions to this log. A confirmed action and its
+approved audit entry commit in the same local SQLite transaction.
+
+## Payment pipeline
+
+The [pipeline](src/veto/pipeline.py) checks a proposal against confirmed
+history, calls a supplied executor only for approved proposals, then records
+the result. The executor receives a stable idempotency key derived from the
+policy and event id. Replaying an already recorded event returns its original
+result without calling the executor again. Rejections and definite execution
+failures receive audit entries but never enter confirmed history.
+
+The current tests use a fake executor. No payment provider or credentials are
+needed for this checkpoint. The executor must honor the idempotency key and
+return a receipt only when execution is confirmed. A timeout, queued receipt,
+or other uncertain outcome raises `ExecutionUncertainError` and does not enter
+confirmed history. Resolve that event with the provider before making another
+payment; retrying it requires the same event id and an idempotent executor.
+
+The local database transaction serializes pipeline calls and commits confirmed
+history with the audit record. It cannot roll back an external payout. If the
+process stops after a provider succeeds but before the local commit, Veto may
+have no record of that payout. The pipeline therefore does not yet provide
+safe live-money recovery or multi-worker operation. A durable pending state,
+provider reconciliation, and invoice-to-payout binding are still needed.
 
 ## Policy and action data
 
