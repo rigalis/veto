@@ -21,11 +21,11 @@ keys. RazorpayX test mode integration is planned for a later stage.
 
 ## Current state
 
-The Python package, mandate grammar, example policies, parser, and validated
-data models are in place. The parser produces structured rules with source
-locations. Converting those rules into policy data, checking policy conflicts,
-the runtime guard, payment adapter, and demo commands are still to come.
-Each part will be added and checked in a separate development checkpoint.
+The Python package, mandate grammar, example policies, parser, typed models,
+and policy loader are in place. The loader turns structured rules into exact
+policy data while preserving source locations. Conflict checks, the runtime
+guard, payment adapter, and demo commands are still to come. Each part will
+be added and checked in a separate development checkpoint.
 
 ## Mandate syntax
 
@@ -65,6 +65,17 @@ python -c 'from veto.mandate_parser import parse_mandate_file; print(parse_manda
 
 Syntax errors include the file, line, column, and a pointer to the problem.
 Parsing alone does not decide whether the mandate's rules are valid.
+
+To load a typed policy:
+
+```bash
+python -c 'from veto.policy_loader import load_policy_file; print(load_policy_file("examples/strict_treasury.mdt"))'
+```
+
+The loader rejects invalid calendar dates, fractions of a cent, and time
+windows that cannot be represented as whole seconds. It keeps
+potential conflicts such as duplicate rule ids and inverted validity windows
+for the later static checks to diagnose.
 
 ## Policy and action data
 

@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from veto.mandate_ast import SourceLocation
+
 
 ActionType = Literal["payout", "payment", "refund", "invoice_match"]
 Currency = Literal["INR", "USD"]
@@ -44,6 +46,7 @@ class SpendingCap(_StrictModel):
     max_amount: Decimal
     currency: Currency
     window_seconds: int | None = Field(default=None, gt=0)
+    location: SourceLocation | None = None
 
     @field_validator("max_amount", mode="before")
     @classmethod
@@ -54,10 +57,12 @@ class SpendingCap(_StrictModel):
 class Precondition(_StrictModel):
     required_action: ActionType
     before_action: ActionType
+    location: SourceLocation | None = None
 
 
 class PolicyRule(_StrictModel):
     id: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$")
+    location: SourceLocation | None = None
     caps: tuple[SpendingCap, ...] = ()
     allowed_merchants: tuple[str, ...] = ()
     denied_merchants: tuple[str, ...] = ()
