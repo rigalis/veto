@@ -33,10 +33,15 @@ class HistoryStore:
                     amount TEXT NOT NULL,
                     currency TEXT NOT NULL,
                     merchant TEXT NOT NULL,
+                    payment_id TEXT,
                     executed_at TEXT NOT NULL
                 )
                 """
             )
+            if "payment_id" not in {
+                row[1] for row in db.execute("PRAGMA table_info(confirmed_actions)")
+            }:
+                db.execute("ALTER TABLE confirmed_actions ADD COLUMN payment_id TEXT")
 
     def record_confirmed(self, event_id: str, executed: ExecutedAction) -> int:
         """Append once; an identical retry returns the original sequence id."""
@@ -59,20 +64,21 @@ class HistoryStore:
             f"{action.amount:.2f}",
             action.currency,
             action.merchant,
+            action.payment_id,
             executed.executed_at.isoformat(timespec="microseconds"),
         )
         db.execute(
             """
             INSERT INTO confirmed_actions
-                (event_id, action_type, amount, currency, merchant, executed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (event_id, action_type, amount, currency, merchant, payment_id, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO NOTHING
             """,
             payload,
         )
         row = db.execute(
             """
-            SELECT seq, event_id, action_type, amount, currency, merchant, executed_at
+            SELECT seq, event_id, action_type, amount, currency, merchant, payment_id, executed_at
             FROM confirmed_actions WHERE event_id = ?
             """,
             (event_id,),
@@ -94,7 +100,7 @@ class HistoryStore:
     def _confirmed_connection(db: sqlite3.Connection) -> tuple[ExecutedAction, ...]:
         rows = db.execute(
             """
-            SELECT action_type, amount, currency, merchant, executed_at
+            SELECT action_type, amount, currency, merchant, payment_id, executed_at
             FROM confirmed_actions ORDER BY seq
             """
         ).fetchall()
@@ -105,8 +111,9 @@ class HistoryStore:
                     amount=amount,
                     currency=currency,
                     merchant=merchant,
+                    payment_id=payment_id,
                 ),
                 executed_at=executed_at,
             )
-            for action_type, amount, currency, merchant, executed_at in rows
+            for action_type, amount, currency, merchant, payment_id, executed_at in rows
         )

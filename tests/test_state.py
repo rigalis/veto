@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import sqlite3
 
 import pytest
 
@@ -87,3 +88,25 @@ def test_blank_event_id_is_rejected(tmp_path):
     store = HistoryStore(tmp_path / "state.sqlite3")
     with pytest.raises(ValueError, match="cannot be blank"):
         store.record_confirmed("  ", ExecutedAction(action=_action(), executed_at=NOW))
+
+
+def test_existing_history_database_adds_nullable_payment_id(tmp_path):
+    path = tmp_path / "old.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE confirmed_actions (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "event_id TEXT NOT NULL UNIQUE, action_type TEXT NOT NULL, amount TEXT NOT NULL, "
+            "currency TEXT NOT NULL, merchant TEXT NOT NULL, executed_at TEXT NOT NULL)"
+        )
+        db.execute(
+            "INSERT INTO confirmed_actions (event_id, action_type, amount, currency, merchant, executed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("old-1", "payout", "40.00", "INR", "vendor_123", NOW.isoformat(timespec="microseconds")),
+        )
+    store = HistoryStore(path)
+    assert store.confirmed()[0].action.payment_id is None
+    refund = PaymentAction(
+        type="refund", amount="5", currency="INR", merchant="customer_a", payment_id="pay_test123"
+    )
+    store.record_confirmed("refund-1", ExecutedAction(action=refund, executed_at=NOW))
+    assert HistoryStore(path).confirmed()[1].action.payment_id == "pay_test123"

@@ -228,6 +228,36 @@ identity. This adapter is for test mode only. Binding a beneficiary to a
 specific mandate and recovering incomplete provider calls are required before
 live use.
 
+## Razorpay Payments test refunds
+
+The [refund executor](src/veto/razorpay_refunds.py) connects approved INR
+`refund` actions to Razorpay Payments test mode. It needs a captured test
+payment (`pay_...`) made with the same test account, a test Key ID and secret,
+and a trusted mapping from each merchant label to its payment ID. Each refund
+proposal includes that payment ID; the executor checks it against the trusted
+mapping before sending a request. It rejects live Key IDs, uses paise and a
+stable `X-Refund-Idempotency` key, and records only matching `processed`
+responses. A pending or unclear outcome requires reconciliation before retrying
+with the same event ID and request.
+
+This checkpoint tests HTTP requests with a local mock transport; it does not
+call Razorpay. The demo will need a captured test payment before an actual
+test refund. Razorpay Payments refunds return funds to the original payment
+method; this is a separate demonstration from vendor payouts. See the
+[normal refund API](https://razorpay.com/docs/api/refunds/create-normal/) and
+[test payment guide](https://razorpay.com/docs/payments/payments/test-card-details/).
+
+## Modern Treasury sandbox payout path
+
+Modern Treasury is the planned provider for the main outbound payout demo.
+The sandbox Organization ID and API key authenticate with HTTP Basic Auth.
+An outbound payment order also needs a sandbox internal account ID and a
+counterparty external account ID. The next checkpoint will connect these
+objects to an approved payout and track the payment order through its status
+changes. Keep credentials in local environment variables or an ignored `.env`
+file, never in tracked files. See the [payments quickstart](https://docs.moderntreasury.com/payments/docs/quickstart)
+and [authentication guide](https://docs.moderntreasury.com/platform/reference/authentication).
+
 ## Policy and action data
 
 The [validated models](src/veto/models.py) represent spending caps, policy

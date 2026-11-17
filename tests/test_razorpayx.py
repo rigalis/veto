@@ -85,6 +85,11 @@ def test_live_key_is_rejected_before_any_request():
         _executor(lambda request: _response(), key_id="rzp_live_example")
 
 
+def test_account_id_cannot_be_used_as_payout_source():
+    with pytest.raises(ValueError, match="not an account id"):
+        _executor(lambda request: _response(), account_number="acc_test123")
+
+
 def test_unmapped_merchant_and_non_payout_actions_never_call_provider():
     calls = []
 

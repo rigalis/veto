@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -107,6 +108,7 @@ class PaymentAction(_StrictModel):
     amount: Decimal
     currency: Currency
     merchant: str = Field(min_length=1)
+    payment_id: str | None = None
 
     @field_validator("amount", mode="before")
     @classmethod
@@ -120,12 +122,21 @@ class PaymentAction(_StrictModel):
             raise ValueError("merchant name cannot be blank")
         return value
 
+    @field_validator("payment_id")
+    @classmethod
+    def validate_payment_id(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"pay_[A-Za-z0-9]+", value):
+            raise ValueError("payment id must be a pay_ identifier")
+        return value
+
     @model_validator(mode="after")
     def validate_action_amount(self) -> PaymentAction:
         if self.type == "invoice_match" and self.amount != 0:
             raise ValueError("invoice_match must have a zero amount")
         if self.type != "invoice_match" and self.amount == 0:
             raise ValueError("money-moving actions need a positive amount")
+        if self.type != "refund" and self.payment_id is not None:
+            raise ValueError("only refund actions can reference a payment id")
         return self
 
 

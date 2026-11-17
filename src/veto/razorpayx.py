@@ -36,8 +36,8 @@ class RazorpayXTestExecutor:
     ) -> None:
         if not key_id.startswith("rzp_test_") or not key_secret.strip():
             raise ValueError("RazorpayX test key id and secret are required")
-        if not account_number.strip():
-            raise ValueError("test customer identifier is required")
+        if not account_number.strip() or account_number.startswith(("acc_", "acct_")):
+            raise ValueError("test customer identifier is required, not an account id")
         if not fund_accounts or any(
             not merchant.strip() or not fund_id.startswith("fa_")
             for merchant, fund_id in fund_accounts.items()

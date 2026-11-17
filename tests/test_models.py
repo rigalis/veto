@@ -31,6 +31,15 @@ def test_action_types_and_amounts_are_checked():
         PaymentAction(type="transfer", amount=1, currency="INR", merchant="v")
 
 
+def test_refund_payment_id_is_validated_and_exclusive_to_refunds():
+    action = PaymentAction(type="refund", amount=1, currency="INR", merchant="v", payment_id="pay_ABC123")
+    assert action.payment_id == "pay_ABC123"
+    with pytest.raises(ValidationError, match="pay_ identifier"):
+        PaymentAction(type="refund", amount=1, currency="INR", merchant="v", payment_id="pay_bad/path")
+    with pytest.raises(ValidationError, match="only refund"):
+        PaymentAction(type="payout", amount=1, currency="INR", merchant="v", payment_id="pay_ABC123")
+
+
 def test_policy_dates_are_utc_and_timezone_aware():
     rule = PolicyRule(id="R1", valid_from="2026-01-01T05:30:00+05:30")
     assert rule.valid_from == datetime(2026, 1, 1, tzinfo=timezone.utc)
