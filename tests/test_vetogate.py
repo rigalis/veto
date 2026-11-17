@@ -1,4 +1,4 @@
-"""The first runtime gate slice enforces caps and merchant policy."""
+"""Runtime gate checks caps, merchants, validity windows, and action order."""
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -102,11 +102,87 @@ def test_extremely_long_window_still_counts_confirmed_history():
     assert VetoGate(policy).evaluate(_action("50"), now=NOW, executed=history).code == "over_cap"
 
 
-def test_unsupported_constraints_reject_until_next_checkpoint():
-    ordered = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
-    timed = VetoGate(load_policy_file(EXAMPLES / "strict_treasury.mdt"))
-    assert ordered.evaluate(_action(), now=NOW, executed=()).code == "unsupported_action_order"
-    assert timed.evaluate(_action(), now=NOW, executed=()).code == "unsupported_validity_window"
+def test_precondition_requires_confirmed_prior_action():
+    gate = VetoGate(load_policy_file(EXAMPLES / "strict_treasury.mdt"))
+    assert gate.evaluate(_action(), now=NOW, executed=()).code == "missing_precondition"
+
+    invoice = _action("0", action_type="invoice_match")
+    assert gate.evaluate(invoice, now=NOW, executed=()).approved
+    history = (ExecutedAction(action=invoice, executed_at=NOW),)
+    assert gate.evaluate(_action(), now=NOW, executed=history).approved
+
+
+def test_precondition_is_bound_to_merchant_and_currency():
+    gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
+    other_vendor = ExecutedAction(
+        action=_action("0", merchant="vendor_456", action_type="invoice_match"),
+        executed_at=NOW,
+    )
+    other_currency = ExecutedAction(
+        action=_action("0", action_type="invoice_match", currency="USD"),
+        executed_at=NOW,
+    )
+    assert gate.evaluate(_action(), now=NOW, executed=(other_vendor,)).code == "missing_precondition"
+    assert gate.evaluate(_action(), now=NOW, executed=(other_currency,)).code == "missing_precondition"
+
+
+def test_validity_window_includes_bounds_and_rejects_outside():
+    gate = VetoGate(load_policy_file(EXAMPLES / "strict_treasury.mdt"))
+    invoice = _action("0", action_type="invoice_match")
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2035, 1, 1, tzinfo=timezone.utc)
+    assert gate.evaluate(invoice, now=start, executed=()).approved
+    assert gate.evaluate(invoice, now=end, executed=()).approved
+    assert gate.evaluate(invoice, now=start - timedelta(microseconds=1), executed=()).code == "not_yet_valid"
+    assert gate.evaluate(invoice, now=end + timedelta(microseconds=1), executed=()).code == "expired_window"
+
+
+def test_validity_window_offsets_are_compared_in_utc():
+    gate = VetoGate(
+        load_policy(
+            "mandate Offset { rule R1 {"
+            " valid_window 2026-01-01T05:30:00+05:30 to 2026-01-02T05:30:00+05:30"
+            " cap payout <= 100 INR"
+            " } }"
+        )
+    )
+    instant = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert gate.evaluate(_action(), now=instant, executed=()).approved
+    assert gate.evaluate(_action(), now=instant - timedelta(microseconds=1), executed=()).code == "not_yet_valid"
+
+
+def test_sequence_enforces_first_ordered_pass_then_allows_later_actions():
+    policy = load_policy(
+        "mandate Ordered {"
+        " rule Cap { cap payout <= 100 INR per 24h }"
+        " rule Steps { sequence [invoice_match, payout] }"
+        "}"
+    )
+    gate = VetoGate(policy)
+    invoice = _action("0", action_type="invoice_match")
+    payout = _action("40")
+    assert gate.evaluate(payout, now=NOW, executed=()).code == "out_of_sequence"
+    first = ExecutedAction(action=invoice, executed_at=NOW - timedelta(seconds=2))
+    assert gate.evaluate(invoice, now=NOW, executed=(first,)).code == "out_of_sequence"
+    assert gate.evaluate(payout, now=NOW, executed=(first,)).approved
+    second = ExecutedAction(action=payout, executed_at=NOW - timedelta(seconds=1))
+    assert gate.evaluate(payout, now=NOW, executed=(second, first)).approved
+
+
+def test_sequence_progress_is_separate_for_each_merchant():
+    gate = VetoGate(
+        load_policy(
+            "mandate Ordered {"
+            " rule Cap { cap payout <= 100 INR per 24h }"
+            " rule Steps { sequence [invoice_match, payout] }"
+            "}"
+        )
+    )
+    prior = ExecutedAction(
+        action=_action("0", merchant="vendor_456", action_type="invoice_match"),
+        executed_at=NOW,
+    )
+    assert gate.evaluate(_action(), now=NOW, executed=(prior,)).code == "out_of_sequence"
 
 
 def test_statically_invalid_policy_cannot_construct_gate():

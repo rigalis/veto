@@ -1,4 +1,4 @@
-"""First runtime gate slice: caps and merchant rules, with safe rejections."""
+"""Runtime gate for caps, merchants, validity windows, and action order."""
 
 from __future__ import annotations
 
@@ -64,19 +64,19 @@ class VetoGate:
             raise ValueError("executed history contains an action from the future")
 
         for rule in self.policy.rules:
-            if rule.valid_from is not None or rule.valid_to is not None:
+            if rule.valid_from is not None and current_time < rule.valid_from:
                 return Verdict(
                     False,
-                    "unsupported_validity_window",
-                    "validity-window checks are not implemented yet",
+                    "not_yet_valid",
+                    f"rule {rule.id!r} is not valid until {rule.valid_from.isoformat()}",
                     rule.id,
                     rule.location,
                 )
-            if rule.preconditions or rule.sequence is not None:
+            if rule.valid_to is not None and current_time > rule.valid_to:
                 return Verdict(
                     False,
-                    "unsupported_action_order",
-                    "precondition and sequence checks are not implemented yet",
+                    "expired_window",
+                    f"rule {rule.id!r} expired at {rule.valid_to.isoformat()}",
                     rule.id,
                     rule.location,
                 )
@@ -143,5 +143,53 @@ class VetoGate:
                     rule.id,
                     cap.location or rule.location,
                 )
+
+        # Order is scoped to the same merchant and currency. A prior invoice
+        # match for one vendor must not authorize another vendor's payout.
+        context_history = sorted(
+            (
+                record
+                for record in history
+                if record.action.merchant == action.merchant
+                and record.action.currency == action.currency
+            ),
+            key=lambda record: record.executed_at,
+        )
+        for rule in self.policy.rules:
+            for precondition in rule.preconditions:
+                if action.type != precondition.before_action:
+                    continue
+                if not any(
+                    record.action.type == precondition.required_action
+                    for record in context_history
+                ):
+                    return Verdict(
+                        False,
+                        "missing_precondition",
+                        f"{precondition.required_action} must occur before {action.type} "
+                        f"for merchant {action.merchant!r}",
+                        rule.id,
+                        precondition.location or rule.location,
+                    )
+
+            if rule.sequence:
+                progress = 0
+                for record in context_history:
+                    if progress == len(rule.sequence):
+                        break
+                    if record.action.type == rule.sequence[progress]:
+                        progress += 1
+                if (
+                    progress < len(rule.sequence)
+                    and action.type in rule.sequence
+                    and action.type != rule.sequence[progress]
+                ):
+                    return Verdict(
+                        False,
+                        "out_of_sequence",
+                        f"{rule.id!r} expects {rule.sequence[progress]} before {action.type}",
+                        rule.id,
+                        rule.location,
+                    )
 
         return Verdict(True, None, "action satisfies the supported policy checks")
