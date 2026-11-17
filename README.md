@@ -24,9 +24,10 @@ keys. RazorpayX test mode integration is planned for a later stage.
 The Python package, mandate grammar, example policies, parser, typed models,
 policy loader, both tiers of static checks, and VetoGate's policy checks are
 in place. VetoGate evaluates merchant rules, spending caps, validity windows,
-preconditions, and action order using confirmed action history. State
-persistence, the payment adapter, and demo commands are still to come. Each
-part will be added and checked in a separate development checkpoint.
+preconditions, and action order using confirmed action history. A SQLite store
+now preserves that history across plans and restarts. The payment adapter and
+demo commands are still to come. Each part will be added and checked in a
+separate development checkpoint.
 
 ## Mandate syntax
 
@@ -128,13 +129,26 @@ other policy checks continue to apply. The current action model has no invoice
 identifier, so `invoice_match` is not yet tied to one specific payout. That
 binding must be added before using this as a real invoice-payment control.
 
+## Confirmed action history
+
+The [SQLite history store](src/veto/state.py) keeps only confirmed actions.
+Pass `store.confirmed()` to VetoGate for each proposal. Once an external
+executor confirms success, call `store.record_confirmed(event_id, executed)`
+with its stable event id and an `ExecutedAction` stamped by trusted code.
+Repeating the same event id and content is idempotent; reusing the id for a
+different action fails.
+
+Approval alone must not be recorded as execution. This stage supports a
+sequential demo: checking, executing, and recording are not yet one atomic
+operation across concurrent workers. The later pipeline will own that flow.
+
 ## Policy and action data
 
 The [validated models](src/veto/models.py) represent spending caps, policy
 rules, and proposed actions. Money amounts use decimal values and reject
 fractions of a cent. Policy dates require a timezone offset. An agent's action
-does not carry a timestamp; the future runtime guard will use a trusted clock
-when it checks validity windows.
+does not carry a timestamp; the runtime guard uses a trusted clock when it
+checks validity windows.
 
 ## Set up the development environment
 
