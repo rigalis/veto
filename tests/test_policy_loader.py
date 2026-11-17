@@ -56,6 +56,7 @@ def test_no_window_cap_and_offset_dates_lower():
         "flawed_inverted_window",
         "flawed_precondition_cycle",
         "flawed_shadowed_caps",
+        "flawed_sequence_conflict",
         "flawed_zero_cap",
     ],
 )

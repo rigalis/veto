@@ -1,0 +1,9 @@
+# Expected Z3 error: the sequence and precondition demand opposite orders.
+mandate SequenceConflict {
+  rule Protocol {
+    sequence [invoice_match, payout]
+  }
+  rule ReversedRequirement {
+    require payout before invoice_match
+  }
+}

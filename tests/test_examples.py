@@ -26,6 +26,7 @@ def parser():
         "flawed_inverted_window",
         "flawed_precondition_cycle",
         "flawed_shadowed_caps",
+        "flawed_sequence_conflict",
         "flawed_zero_cap",
     ],
 )

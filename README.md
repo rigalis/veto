@@ -22,11 +22,10 @@ keys. RazorpayX test mode integration is planned for a later stage.
 ## Current state
 
 The Python package, mandate grammar, example policies, parser, typed models,
-policy loader, and first static checks are in place. The loader turns
+policy loader, and both tiers of static checks are in place. The loader turns
 structured rules into exact policy data while preserving source locations.
-Cross-rule cycle checks, the runtime guard, payment adapter, and demo commands
-are still to come. Each part will be added and checked in a separate
-development checkpoint.
+The runtime guard, payment adapter, and demo commands are still to come. Each
+part will be added and checked in a separate development checkpoint.
 
 ## Mandate syntax
 
@@ -55,8 +54,8 @@ syntax.
 [strict treasury](examples/strict_treasury.mdt) adds a validity window and
 action order for the planned demo. The files prefixed `flawed_` in
 [examples/](examples/) each show a specific mistake. The bare timestamp file
-is a syntax error; the precondition cycle needs the later Z3 check. The other
-flawed examples now produce static diagnostics.
+is a syntax error; the precondition cycle and sequence conflict are found by
+Z3. The other flawed examples produce fast static diagnostics.
 
 To parse a mandate after installation:
 
@@ -89,6 +88,18 @@ warning. To inspect one:
 python -c 'from veto.policy_loader import load_policy_file; from veto.policy_checks import check_policy; print(*check_policy(load_policy_file("examples/flawed_shadowed_caps.mdt")), sep="\n")'
 ```
 
+The optional [Z3 check](src/veto/z3_checks.py) combines preconditions and
+sequences from rules that are valid at the same time. It reports action-order
+cycles that prevent completing the involved actions; it does not claim that
+every action in the mandate is impossible. Run both tiers with:
+
+```bash
+python -c 'from veto.policy_loader import load_policy_file; from veto.z3_checks import verify_policy; print(*verify_policy(load_policy_file("examples/flawed_precondition_cycle.mdt")), sep="\n")'
+```
+
+Install the `smt` extra for this check. Without Z3, policies with action-order
+rules receive a `z3_unavailable` warning instead of silently skipping it.
+
 ## Policy and action data
 
 The [validated models](src/veto/models.py) represent spending caps, policy
@@ -114,8 +125,8 @@ the core package can also be installed with `python -m pip install -e .`.
 
 Run the current test suite with `python -m pytest -q`. GitHub Actions runs it
 on pushes and pull requests using Python 3.11 and 3.14. The workflow installs
-the core package and `dev` extra; later stages will extend it when the
-optional components need their own tests.
+the core package with the `dev` and `smt` extras; later stages will extend it
+when other optional components need their own tests.
 
 ## Planned boundaries
 

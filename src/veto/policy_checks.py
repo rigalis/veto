@@ -44,8 +44,8 @@ def _cap_scope(rule: PolicyRule, cap: SpendingCap) -> tuple:
 def check_policy(policy: Policy) -> tuple[Diagnostic, ...]:
     """Report local rule errors and simple cross-rule conflicts.
 
-    A later SMT pass will check cross-rule precondition cycles. This function
-    does not mutate the policy or decide whether a runtime action is allowed.
+    The SMT action-order check lives in z3_checks. This function does not
+    mutate the policy or decide whether a runtime action is allowed.
     """
     diagnostics: list[Diagnostic] = []
     seen_rule_ids: dict[str, PolicyRule] = {}
