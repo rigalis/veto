@@ -28,8 +28,9 @@ preconditions, and action order using confirmed action history. A SQLite store
 now preserves that history across plans and restarts. A separate hash-chained
 audit log is also in place. The payment pipeline connects the guard, a
 pluggable executor, confirmed history, and audit records. A simulated executor
-and command-line demo exercise that path. A provider payout adapter is still
-to come.
+and command-line demo exercise that path. A RazorpayX test-mode adapter is
+implemented with mocked HTTP tests; connecting it to an account remains a
+later checkpoint.
 
 ## Mandate syntax
 
@@ -202,6 +203,30 @@ python -m veto.demo --db ./veto-demo.sqlite3
 Running the command again with that same database replays the two recorded
 event ids; it does not create another payout or audit entry. The executor
 returns deterministic fake receipts and makes no network calls.
+
+## RazorpayX test adapter
+
+The [RazorpayX executor](src/veto/razorpayx.py) can be supplied to the payment
+pipeline for INR payouts. It requires a test Key ID and secret, a test customer
+identifier, and a trusted mapping from merchant labels to pre-created test
+fund account ids. It refuses live key ids, never takes a fund account from an
+agent proposal, and sends the pipeline's stable idempotency key in RazorpayX's
+required `X-Payout-Idempotency` header. Only a matching `processed` response
+becomes confirmed history. Queued, pending, processing, failed, or unclear
+responses require reconciliation; they are never recorded as completed.
+
+This checkpoint tests the adapter with mocked HTTP responses and does not
+make a real RazorpayX API call. Before a test-mode API run, create a test
+contact and fund account, allowlist the calling IP, and keep test credentials
+outside the repository. Keep the merchant-to-fund-account mapping stable for
+retries of the same event. See Razorpay's [payout API](https://razorpay.com/docs/api/x/payouts),
+[idempotency guide](https://razorpay.com/docs/api/x/payout-idempotency), and
+[test key instructions](https://razorpay.com/docs/x/dashboard/api-keys).
+
+The current action model has a merchant label but no verified beneficiary
+identity. This adapter is for test mode only. Binding a beneficiary to a
+specific mandate and recovering incomplete provider calls are required before
+live use.
 
 ## Policy and action data
 
