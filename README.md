@@ -25,9 +25,10 @@ The Python package, mandate grammar, example policies, parser, typed models,
 policy loader, both tiers of static checks, and VetoGate's policy checks are
 in place. VetoGate evaluates merchant rules, spending caps, validity windows,
 preconditions, and action order using confirmed action history. A SQLite store
-now preserves that history across plans and restarts. The payment adapter and
-demo commands are still to come. Each part will be added and checked in a
-separate development checkpoint.
+now preserves that history across plans and restarts. A separate hash-chained
+audit log is also in place. The pipeline that connects these pieces, payment
+adapter, and demo commands are still to come. Each part will be added and
+checked in a separate development checkpoint.
 
 ## Mandate syntax
 
@@ -141,6 +142,21 @@ different action fails.
 Approval alone must not be recorded as execution. This stage supports a
 sequential demo: checking, executing, and recording are not yet one atomic
 operation across concurrent workers. The later pipeline will own that flow.
+
+## Audit trail
+
+The [audit log](src/veto/audit.py) stores approved, rejected, and execution
+error decisions in a separate SQLite table. Each entry includes the action,
+reason, time, and a fingerprint of the policy used. Its hash covers the
+previous hash and canonical entry content. `verify_chain()` reports the first
+broken sequence number, and appending to a broken chain fails. The history
+and audit tables can share one database file.
+
+This is tamper-evident against local edits or deletion of entries. Someone
+who can rewrite the whole database and recompute the hashes could forge a new
+chain; external anchoring or signatures would be needed to resist that.
+VetoGate does not write audit entries yet. The next pipeline checkpoint will
+connect decisions to the log.
 
 ## Policy and action data
 

@@ -16,7 +16,7 @@ class HistoryStore:
     """SQLite-backed confirmed history for sequential VetoGate runs.
 
     This store records only completed actions. Rejections and execution errors
-    belong to the later audit log. The caller must confirm success before
+    belong to the separate audit log. The caller must confirm success before
     writing here, then reload history before evaluating the next action.
     """
 
