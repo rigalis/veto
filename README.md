@@ -30,7 +30,8 @@ audit log is also in place. The payment pipeline connects the guard, a
 pluggable executor, confirmed history, and audit records. A simulated executor
 and command-line demo exercise that path. RazorpayX payout, Razorpay Payments
 refund, and Modern Treasury sandbox payout adapters have mocked HTTP tests.
-The Modern Treasury payout path also has a guarded sandbox command.
+The Modern Treasury payout and Razorpay Payments refund paths also have
+guarded test-mode commands.
 
 ## Mandate syntax
 
@@ -240,12 +241,48 @@ stable `X-Refund-Idempotency` key, and records only matching `processed`
 responses. A pending or unclear outcome requires reconciliation before retrying
 with the same event ID and request.
 
-This checkpoint tests HTTP requests with a local mock transport; it does not
-call Razorpay. The demo will need a captured test payment before an actual
-test refund. Razorpay Payments refunds return funds to the original payment
+The adapter tests use a local mock transport and do not call Razorpay. The
+test-mode demo needs a captured test payment before an actual refund.
+Razorpay Payments refunds return funds to the original payment
 method; this is a separate demonstration from vendor payouts. See the
 [normal refund API](https://razorpay.com/docs/api/refunds/create-normal/) and
 [test payment guide](https://razorpay.com/docs/payments/payments/test-card-details/).
+
+### Run the test refund demo
+
+From the repository root, preview a 1 INR refund with no credentials or API
+call. The demo mandate caps `demo_customer` refunds at 10 INR per action and
+per 24 hours:
+
+```bash
+python -m veto.razorpay_refund_demo
+python -m veto.razorpay_refund_demo --amount 11.00
+```
+
+For an actual test-mode refund, make a payment through Razorpay Checkout with
+test keys and a [test card](https://razorpay.com/docs/payments/payments/test-card-details/).
+Confirm that the payment is **captured** in the test dashboard and copy its
+`pay_...` ID. The refund amount must be no more than the unrefunded amount of
+that payment. Copy `.env.example` to `.env` in the repository root if you have
+not already done so, then fill in:
+
+| Variable | Value |
+| --- | --- |
+| `RAZORPAY_TEST_KEY_ID` | Payments test Key ID, starting `rzp_test_` |
+| `RAZORPAY_TEST_KEY_SECRET` | Matching Payments test Key Secret |
+| `RAZORPAY_TEST_PAYMENT_ID` | Captured test payment ID, starting `pay_` |
+
+The `.env` file is ignored by git. The command reads it only when you pass
+`--execute`:
+
+```bash
+python -m veto.razorpay_refund_demo --execute
+```
+
+The default database is `data/razorpay-refund-demo.sqlite3`, and the default
+event ID is `razorpay-refund-demo-001`. Keep both the event ID and payment ID
+stable when retrying an uncertain refund. Check the refund in Razorpay first;
+then rerun the same command. Use a new event ID only for a genuinely new refund.
 
 ## Modern Treasury sandbox payout path
 
