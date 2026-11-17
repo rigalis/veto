@@ -22,10 +22,11 @@ keys. RazorpayX test mode integration is planned for a later stage.
 ## Current state
 
 The Python package, mandate grammar, example policies, parser, typed models,
-and policy loader are in place. The loader turns structured rules into exact
-policy data while preserving source locations. Conflict checks, the runtime
-guard, payment adapter, and demo commands are still to come. Each part will
-be added and checked in a separate development checkpoint.
+policy loader, and first static checks are in place. The loader turns
+structured rules into exact policy data while preserving source locations.
+Cross-rule cycle checks, the runtime guard, payment adapter, and demo commands
+are still to come. Each part will be added and checked in a separate
+development checkpoint.
 
 ## Mandate syntax
 
@@ -54,8 +55,8 @@ syntax.
 [strict treasury](examples/strict_treasury.mdt) adds a validity window and
 action order for the planned demo. The files prefixed `flawed_` in
 [examples/](examples/) each show a specific mistake. The bare timestamp file
-is a syntax error now; the other mistakes will be diagnosed by later policy
-checks.
+is a syntax error; the precondition cycle needs the later Z3 check. The other
+flawed examples now produce static diagnostics.
 
 To parse a mandate after installation:
 
@@ -73,9 +74,20 @@ python -c 'from veto.policy_loader import load_policy_file; print(load_policy_fi
 ```
 
 The loader rejects invalid calendar dates, fractions of a cent, and time
-windows that cannot be represented as whole seconds. It keeps
-potential conflicts such as duplicate rule ids and inverted validity windows
-for the later static checks to diagnose.
+windows that cannot be represented as whole seconds. It keeps potential
+conflicts such as duplicate rule ids and inverted validity windows for the
+static checks to diagnose.
+
+The [static checks](src/veto/policy_checks.py) now report duplicate rule ids,
+merchant allow/deny conflicts and disjoint allowlists during overlapping
+validity windows, inverted windows, repeated or shadowed caps with the same
+scope, self-preconditions, and repeated sequence steps. All rules apply
+together, so their merchant allowlists intersect. A zero cap produces a
+warning. To inspect one:
+
+```bash
+python -c 'from veto.policy_loader import load_policy_file; from veto.policy_checks import check_policy; print(*check_policy(load_policy_file("examples/flawed_shadowed_caps.mdt")), sep="\n")'
+```
 
 ## Policy and action data
 

@@ -25,6 +25,7 @@ def parser():
         "flawed_merchant_conflict",
         "flawed_inverted_window",
         "flawed_precondition_cycle",
+        "flawed_shadowed_caps",
         "flawed_zero_cap",
     ],
 )

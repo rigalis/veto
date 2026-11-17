@@ -1,0 +1,9 @@
+# Expected policy error: the looser cap cannot affect the same scope.
+mandate ShadowedCaps {
+  rule Original {
+    cap payout <= 50000 INR per 24h
+  }
+  rule Tighter {
+    cap payout <= 10000 INR per 24h
+  }
+}
