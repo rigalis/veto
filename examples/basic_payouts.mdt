@@ -1,0 +1,8 @@
+# Cap and merchant rules only; usable with the first VetoGate slice.
+mandate BasicPayouts {
+  rule Limit {
+    cap payout <= 100 INR per 24h
+    allow_merchant "vendor_123"
+    deny_merchant "vendor_blocked"
+  }
+}

@@ -22,10 +22,11 @@ keys. RazorpayX test mode integration is planned for a later stage.
 ## Current state
 
 The Python package, mandate grammar, example policies, parser, typed models,
-policy loader, and both tiers of static checks are in place. The loader turns
-structured rules into exact policy data while preserving source locations.
-The runtime guard, payment adapter, and demo commands are still to come. Each
-part will be added and checked in a separate development checkpoint.
+policy loader, both tiers of static checks, and the first VetoGate checks are
+in place. VetoGate currently evaluates merchant rules and spending caps using
+confirmed action history. Validity windows, action order, state persistence,
+the payment adapter, and demo commands are still to come. Each part will be
+added and checked in a separate development checkpoint.
 
 ## Mandate syntax
 
@@ -99,6 +100,30 @@ python -c 'from veto.policy_loader import load_policy_file; from veto.z3_checks 
 
 Install the `smt` extra for this check. Without Z3, policies with action-order
 rules receive a `z3_unavailable` warning instead of silently skipping it.
+
+## VetoGate so far
+
+The [runtime gate](src/veto/vetogate.py) checks merchant allowlists and
+denylists, per-action caps, and rolling-window caps. A money-moving action
+without a matching cap is rejected. The gate requires a trusted current time
+and a complete list of confirmed earlier actions. It returns a verdict but
+does not execute a payout or record an approved action yet.
+
+```python
+from datetime import datetime, timezone
+from veto.models import PaymentAction
+from veto.policy_loader import load_policy_file
+from veto.vetogate import VetoGate
+
+gate = VetoGate(load_policy_file("examples/basic_payouts.mdt"))
+action = PaymentAction(type="payout", amount="40.00", currency="INR", merchant="vendor_123")
+verdict = gate.evaluate(action, now=datetime.now(timezone.utc), executed=())
+print(verdict)
+```
+
+Policies containing validity windows, preconditions, or sequences currently
+receive an explicit rejection from the gate. Their runtime checks are the
+next checkpoint; they are never silently treated as satisfied.
 
 ## Policy and action data
 

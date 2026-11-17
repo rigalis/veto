@@ -127,3 +127,24 @@ class PaymentAction(_StrictModel):
         if self.type != "invoice_match" and self.amount == 0:
             raise ValueError("money-moving actions need a positive amount")
         return self
+
+
+class ExecutedAction(_StrictModel):
+    """A confirmed action stamped by the trusted execution path."""
+
+    action: PaymentAction
+    executed_at: datetime
+
+    @field_validator("executed_at", mode="before")
+    @classmethod
+    def require_datetime_input(cls, value: object) -> object:
+        if not isinstance(value, (str, datetime)):
+            raise ValueError("execution time must be ISO text or a datetime")
+        return value
+
+    @field_validator("executed_at")
+    @classmethod
+    def require_aware_datetime(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("execution time needs an explicit UTC offset")
+        return value.astimezone(timezone.utc)

@@ -20,6 +20,7 @@ def parser():
     "name",
     [
         "vendor_payments",
+        "basic_payouts",
         "strict_treasury",
         "flawed_duplicate_rules",
         "flawed_merchant_conflict",
