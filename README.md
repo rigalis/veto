@@ -14,10 +14,10 @@ agent proposal -> structured action -> runtime guard -> payout adapter
                                       +-------> audit log
 ```
 
-The first end-to-end demo will show a payment above a mandate's cap being
-rejected, a compliant payment being approved, and both decisions recorded in
-an audit trail. It will use simulated payouts so it requires no money or API
-keys. RazorpayX test mode integration is planned for a later stage.
+The end-to-end demo shows a payment above a mandate's cap being rejected, a
+compliant payment being approved, and both decisions recorded in an audit
+trail. It uses simulated payouts, so it requires no money or API keys.
+RazorpayX test mode integration is planned for a later stage.
 
 ## Current state
 
@@ -27,8 +27,9 @@ in place. VetoGate evaluates merchant rules, spending caps, validity windows,
 preconditions, and action order using confirmed action history. A SQLite store
 now preserves that history across plans and restarts. A separate hash-chained
 audit log is also in place. The payment pipeline connects the guard, a
-pluggable executor, confirmed history, and audit records. A payout adapter and
-demo commands are still to come.
+pluggable executor, confirmed history, and audit records. A simulated executor
+and command-line demo exercise that path. A provider payout adapter is still
+to come.
 
 ## Mandate syntax
 
@@ -166,9 +167,9 @@ policy and event id. Replaying an already recorded event returns its original
 result without calling the executor again. Rejections and definite execution
 failures receive audit entries but never enter confirmed history.
 
-The current tests use a fake executor. No payment provider or credentials are
-needed for this checkpoint. The executor must honor the idempotency key and
-return a receipt only when execution is confirmed. A timeout, queued receipt,
+The current demo uses a simulated executor. No payment provider or credentials
+are needed. The executor must honor the idempotency key and return a receipt
+only when execution is confirmed. A timeout, queued receipt,
 or other uncertain outcome raises `ExecutionUncertainError` and does not enter
 confirmed history. Resolve that event with the provider before making another
 payment; retrying it requires the same event id and an idempotent executor.
@@ -179,6 +180,28 @@ process stops after a provider succeeds but before the local commit, Veto may
 have no record of that payout. The pipeline therefore does not yet provide
 safe live-money recovery or multi-worker operation. A durable pending state,
 provider reconciliation, and invoice-to-payout binding are still needed.
+
+## Run the simulated demo
+
+After installing the package, run:
+
+```bash
+python -m veto.demo
+```
+
+The command proposes a 40 INR payout that passes a 100 INR cap, then a 150 INR
+payout that the policy rejects. It prints both decisions, the simulated
+receipt, the confirmed action count, and the audit chain status. It uses a
+temporary SQLite database and deletes it when the command ends. To keep the
+database for inspection, supply a path:
+
+```bash
+python -m veto.demo --db ./veto-demo.sqlite3
+```
+
+Running the command again with that same database replays the two recorded
+event ids; it does not create another payout or audit entry. The executor
+returns deterministic fake receipts and makes no network calls.
 
 ## Policy and action data
 
