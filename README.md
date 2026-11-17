@@ -249,14 +249,27 @@ method; this is a separate demonstration from vendor payouts. See the
 
 ## Modern Treasury sandbox payout path
 
-Modern Treasury is the planned provider for the main outbound payout demo.
-The sandbox Organization ID and API key authenticate with HTTP Basic Auth.
-An outbound payment order also needs a sandbox internal account ID and a
-counterparty external account ID. The next checkpoint will connect these
-objects to an approved payout and track the payment order through its status
-changes. Keep credentials in local environment variables or an ignored `.env`
-file, never in tracked files. See the [payments quickstart](https://docs.moderntreasury.com/payments/docs/quickstart)
-and [authentication guide](https://docs.moderntreasury.com/platform/reference/authentication).
+The [sandbox executor](src/veto/modern_treasury.py) connects approved USD
+`payout` actions to outbound ACH payment orders. It authenticates with the
+sandbox Organization ID and API key, checks the key's `live_mode` value before
+creating an order, and uses a trusted mapping from merchant labels to sandbox
+counterparty external account IDs. It also needs a sandbox internal account ID
+as the payout source. A live key or unmapped merchant cannot initiate a payout.
+
+The executor uses both a stable `Idempotency-Key` and a stable `external_id`.
+It looks up an existing order before creating one and records only a matching
+order with `status=completed`. An `approved`, `sent`, `failed`, or unclear order
+requires reconciliation and leaves confirmed history unchanged. Modern
+Treasury retains idempotency results for 24 hours; the external ID protects
+against creating a second order after that window. A completed ACH can still
+be returned later, so a fuller demo needs webhook or status reconciliation.
+
+This checkpoint uses mocked HTTP and does not contact Modern Treasury. Keep
+credentials in local environment variables or an ignored `.env` file, never
+in tracked files. A runnable sandbox demo will be added after this adapter.
+See the [payments quickstart](https://docs.moderntreasury.com/payments/docs/quickstart),
+[idempotency guide](https://docs.moderntreasury.com/platform/reference/idempotent-requests),
+and [payment order statuses](https://docs.moderntreasury.com/platform/reference/payment-order-object).
 
 ## Policy and action data
 
