@@ -17,7 +17,7 @@ agent proposal -> structured action -> runtime guard -> payout adapter
 The end-to-end demo shows a payment above a mandate's cap being rejected, a
 compliant payment being approved, and both decisions recorded in an audit
 trail. It uses simulated payouts, so it requires no money or API keys.
-RazorpayX test mode integration is planned for a later stage.
+Test-mode provider adapters for Razorpay and Modern Treasury are also in place.
 
 ## Current state
 
@@ -28,9 +28,9 @@ preconditions, and action order using confirmed action history. A SQLite store
 now preserves that history across plans and restarts. A separate hash-chained
 audit log is also in place. The payment pipeline connects the guard, a
 pluggable executor, confirmed history, and audit records. A simulated executor
-and command-line demo exercise that path. A RazorpayX test-mode adapter is
-implemented with mocked HTTP tests; connecting it to an account remains a
-later checkpoint.
+and command-line demo exercise that path. RazorpayX payout, Razorpay Payments
+refund, and Modern Treasury sandbox payout adapters have mocked HTTP tests.
+The Modern Treasury payout path also has a guarded sandbox command.
 
 ## Mandate syntax
 
@@ -264,12 +264,61 @@ Treasury retains idempotency results for 24 hours; the external ID protects
 against creating a second order after that window. A completed ACH can still
 be returned later, so a fuller demo needs webhook or status reconciliation.
 
-This checkpoint uses mocked HTTP and does not contact Modern Treasury. Keep
+The adapter tests use mocked HTTP and do not contact Modern Treasury. Keep
 credentials in local environment variables or an ignored `.env` file, never
-in tracked files. A runnable sandbox demo will be added after this adapter.
+in tracked files.
 See the [payments quickstart](https://docs.moderntreasury.com/payments/docs/quickstart),
 [idempotency guide](https://docs.moderntreasury.com/platform/reference/idempotent-requests),
 and [payment order statuses](https://docs.moderntreasury.com/platform/reference/payment-order-object).
+
+### Run the sandbox payout demo
+
+From the repository root, preview the guarded USD payout with no credentials
+or API call:
+
+```bash
+python -m veto.modern_treasury_demo
+```
+
+The demo mandate allows `demo_vendor` payouts up to 10 USD per action and per
+24 hours. It defaults to 1 USD and stores history in the ignored
+`data/modern-treasury-demo.sqlite3` database. Change the amount to see a
+rejection before any provider request:
+
+```bash
+python -m veto.modern_treasury_demo --amount 11.00
+```
+
+To prepare an actual sandbox run, create `.env` in the repository root and
+fill it from the Modern Treasury sandbox:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Where to find it |
+| --- | --- |
+| `MODERN_TREASURY_ORG_ID` | API Keys page, Organization ID |
+| `MODERN_TREASURY_API_KEY` | API Keys page, sandbox key |
+| `MODERN_TREASURY_INTERNAL_ACCOUNT_ID` | Internal Accounts page, account `id` supporting USD ACH |
+| `MODERN_TREASURY_RECIPIENT_ACCOUNT_ID` | Counterparty page, external account `id` |
+
+If the sandbox internal account needs funds, follow the
+[quickstart funding step](https://docs.moderntreasury.com/payments/docs/quickstart)
+first. Then run the command below only when you intend to create the 1 USD
+sandbox payment order:
+
+```bash
+python -m veto.modern_treasury_demo --execute
+```
+
+The command checks that the API key is for the sandbox before creating an
+order. It retains the database and event ID across runs. An order may start as
+`approved` and complete later; an `UNCERTAIN` result means check its status in
+Modern Treasury, then rerun with the same event ID and amount. Do not change
+the mapping or start another payout while one is unresolved. A successful
+replay reads the local receipt without another provider request. Use
+`--event-id` for a new, separate sandbox payout after reconciliation.
 
 ## Policy and action data
 
