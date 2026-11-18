@@ -68,6 +68,16 @@ def test_pending_refund_remains_unconfirmed(tmp_path, monkeypatch):
     assert "same event id and amount" in result
 
 
+def test_rejected_refund_reports_provider_error(tmp_path, monkeypatch):
+    _settings(monkeypatch)
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(400, json={"error": {"description": "invalid request sent"}})
+    ))
+    result = run_demo(database=tmp_path / "demo.sqlite3", amount="1.00", event_id="refund-1", execute=True, client=client)
+    assert result.startswith("EXEC_ERROR")
+    assert "HTTP 400): invalid request sent" in result
+
+
 def test_main_loads_ignored_env_file_for_explicit_execution(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     for name in ("RAZORPAY_TEST_KEY_ID", "RAZORPAY_TEST_KEY_SECRET", "RAZORPAY_TEST_PAYMENT_ID"):

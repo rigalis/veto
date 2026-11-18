@@ -65,6 +65,27 @@ class RazorpayTestRefundExecutor:
                 response = self._client.post(url, **request)
             response.raise_for_status()
             body = response.json()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if 400 <= status < 500 and status not in {408, 409, 429}:
+                try:
+                    error = exc.response.json().get("error", {})
+                    detail = error.get("description") or error.get("code")
+                    field = error.get("field")
+                    error_reason = error.get("reason")
+                except (ValueError, AttributeError):
+                    detail = None
+                    field = None
+                    error_reason = None
+                reason = f"Razorpay rejected refund (HTTP {status})"
+                if isinstance(detail, str) and detail.strip():
+                    reason += f": {detail.strip()[:200]}"
+                if isinstance(error_reason, str) and error_reason.strip():
+                    reason += f" ({error_reason.strip()[:80]})"
+                if isinstance(field, str) and field.strip():
+                    reason += f" [field: {field.strip()[:80]}]"
+                raise ExecutionFailed(reason) from exc
+            raise ExecutionUncertainError("refund outcome is unknown; reconcile before retrying") from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise ExecutionUncertainError("refund outcome is unknown; reconcile before retrying") from exc
 

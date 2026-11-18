@@ -112,6 +112,12 @@ def test_http_error_is_uncertain():
         _executor(lambda request: httpx.Response(500))(ACTION, idempotency_key=KEY)
 
 
+def test_razorpay_validation_error_is_definitive():
+    response = httpx.Response(400, json={"error": {"description": "refund unavailable"}})
+    with pytest.raises(ExecutionFailed, match="HTTP 400.*refund unavailable"):
+        _executor(lambda request: response)(ACTION, idempotency_key=KEY)
+
+
 def test_pipeline_records_processed_refund_and_replays_without_another_request(tmp_path):
     requests = []
 

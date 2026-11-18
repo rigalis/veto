@@ -74,7 +74,8 @@ def run_demo(
         return f"UNCERTAIN | {exc} | check the refund in Razorpay; retry with the same event id and amount"
     receipt = f" | refund: {result.receipt.id}" if result.receipt else ""
     replay = " | replayed" if result.replayed else ""
-    return f"{result.decision} | {action.amount:.2f} INR | {result.verdict.reason}{receipt}{replay}"
+    reason = result.audit_record.event.reason if result.decision == "EXEC_ERROR" else result.verdict.reason
+    return f"{result.decision} | {action.amount:.2f} INR | {reason}{receipt}{replay}"
 
 
 def main(argv: list[str] | None = None) -> None:
