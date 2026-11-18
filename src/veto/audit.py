@@ -109,7 +109,9 @@ class AuditLog:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
+            db.execute("PRAGMA journal_mode = WAL")
+            db.execute("PRAGMA busy_timeout = 30000")
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS audit_entries (
@@ -167,13 +169,13 @@ class AuditLog:
         return ChainReport(True, expected_seq - 1)
 
     def verify_chain(self) -> ChainReport:
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             db.execute("BEGIN")
             return self._verify_connection(db)
 
     def append(self, event: AuditEvent) -> AuditRecord:
         """Append under a write lock, refusing to extend a broken chain."""
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             db.execute("BEGIN IMMEDIATE")
             return self._append_connection(db, event)
 
@@ -225,7 +227,7 @@ class AuditLog:
         return AuditRecord(seq, event, previous, entry_hash)
 
     def entries(self) -> tuple[AuditRecord, ...]:
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             rows = db.execute(
                 "SELECT seq, payload, prev_hash, entry_hash FROM audit_entries ORDER BY seq"
             ).fetchall()

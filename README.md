@@ -42,6 +42,8 @@ provider credentials.
 
 The dashboard shows live policy decisions, mandate details, audit history,
 and the recovery queue from one local SQLite database.
+Invoice evidence is checked against a server-owned demo catalog, including
+merchant, currency, and amount.
 
 ![Veto feature guide with indexed sidebar](docs/screenshots/guide.png)
 
@@ -52,6 +54,8 @@ The Guide is a separate page with a sidebar index for each major feature.
 - **Checks mandates before execution.** Rules cover spending caps, merchant
   allowlists and denylists, validity windows, invoice preconditions, and action
   order.
+- **Checks demo invoices against trusted fixtures.** The browser API only
+  records catalog invoices and requires the payout amount to match the catalog.
 - **Combines symbolic policy with constraint checks.** Lark parses mandate
   text into typed rules. Fast static checks catch common mistakes; optional
   Z3 checks policy action-order cycles.
@@ -104,6 +108,7 @@ flowchart LR
 
     subgraph runtime["shared policy and payment core"]
         Q["payment proposal"] --> G["VetoGate"]
+        IC["trusted invoice catalog"] --> IV["invoice identity and amount check"] --> G
         R --> G
         H[("confirmed history")] --> G
         G -->|"rejected"| A["hash-chained audit"]
@@ -115,6 +120,7 @@ flowchart LR
         F --> H
         F --> A
         N --> RC["reconcile or retry same event"]
+        W["signed Modern Treasury webhook"] --> WV["verify HMAC, sandbox scope, and event ID"] --> RC
         RC --> X
         D --> A
     end
@@ -135,7 +141,9 @@ flowchart LR
     end
 ```
 
-Mandates are parsed into typed policy data before proposals arrive. Static
+Mandates are parsed into typed policy data before proposals arrive. The demo
+invoice catalog is server-owned and proposal requests cannot add or edit its
+records. Static
 checks diagnose local policy conflicts; the optional SMT check examines
 action-order constraints. At runtime, VetoGate evaluates a proposal against
 the policy and confirmed history. Only approved proposals get a durable
@@ -145,11 +153,11 @@ an unclear result stays pending for reconciliation and does not count toward
 future policy history. Rejected decisions and definite execution failures are
 audited without becoming confirmed actions.
 
-The API and dashboard shown here are local demo components. Provider adapters
-are independently invoked sandbox/test integrations, not live services behind
-the dashboard. SQLite transactions serialize this single-process demo flow;
-this design does not provide distributed coordination or production-grade
-recovery.
+The dashboard proposal path always uses simulation. Provider adapters are
+separate sandbox/test integrations. A completed Modern Treasury webhook can
+trigger GET-only reconciliation for an existing pending intent. SQLite
+transactions serialize calls sharing one database file; this design does not
+provide distributed coordination or production-grade recovery.
 
 ## Current state
 
@@ -259,9 +267,10 @@ merchant and currency. A sequence governs its first ordered pass; after that,
 other policy checks continue to apply. For policies requiring `invoice_match`
 before `payout`, a payout must also carry an `invoice_id` matching a confirmed
 `invoice_match` for that merchant and currency. The same invoice ID cannot
-authorize a second confirmed payout. The demo supplies simulated invoice
-evidence; Veto does not yet verify invoice documents or amounts from a trusted
-source.
+authorize a second confirmed payout. Invoice-match actions can carry a trusted
+invoice total; the gate checks that a payout matches it. The browser demo uses
+a fixed server-owned catalog, not a live accounting system or invoice document
+reader.
 
 ## Confirmed action history
 
@@ -308,13 +317,25 @@ or other uncertain outcome raises `ExecutionUncertainError` and does not enter
 confirmed history. Resolve that event with the provider before making another
 payment; retrying it requires the same event id and an idempotent executor.
 
+The Modern Treasury webhook receiver authenticates the original request bytes
+with the sandbox webhook key, rejects live-mode events, deduplicates webhook
+IDs, and accepts only completed payment-order events. It then performs the
+adapter's GET-only reconciliation before recording the receipt. Configure the
+receiver only where it can access the same durable database as the pending
+intent. A completed ACH order may still later be returned; later returns are
+not yet applied to confirmed history.
+
 The local database transaction serializes pipeline calls and commits confirmed
 history with the audit record. A pending intent blocks new actions until the
 same event is retried or reconciled. If the process stops after a provider
 succeeds but before the local commit, the intent survives and can be checked
 against the provider. Veto still cannot roll back external effects or claim
-production-safe live-money recovery. Automatic provider reconciliation,
-multi-worker coordination, and trusted invoice verification remain future work.
+production-safe live-money recovery. The browser demo validates against a
+server-owned invoice fixture catalog. Its optional Modern Treasury webhook
+receiver automatically rechecks completed sandbox orders with GET requests;
+other provider lifecycle events still need explicit reconciliation. The
+SQLite transaction and WAL settings serialize processes sharing one database
+file, but do not coordinate separate hosts or instances.
 
 ## Run the simulated demo
 
@@ -360,8 +381,8 @@ python -m veto.api
 ```
 
 Open `http://127.0.0.1:8000/` for the dashboard. It has a guided flow that
-records simulated invoice evidence, blocks a wrong invoice, approves a matching
-payout, and blocks a duplicate. Use the proposal form for your own scenarios;
+validates a catalog invoice, blocks a wrong invoice or amount, approves a
+matching payout, and blocks a duplicate. Use the proposal form for catalog-backed scenarios;
 the audit table, policy view, and pending list read from the same SQLite data.
 The workspace menu shows the active mandate and local storage. The currency
 selector accepts INR and USD so you can inspect the boundary: this demo mandate
@@ -371,8 +392,10 @@ runtime guard, invoice evidence, execution path, audit chain, pending recovery,
 currency behavior, and separate provider demos.
 The API reference remains at `http://127.0.0.1:8000/docs`.
 
-The server binds to your machine's loopback address, uses simulated execution
-only, and never loads payment-provider credentials. Its default SQLite database is
+The server binds to your machine's loopback address. Dashboard proposals use
+simulation and do not load provider credentials. The optional webhook endpoint
+loads Modern Treasury sandbox settings only when the route is first called and
+makes provider GET requests only after signature verification. Its default SQLite database is
 `data/veto-api-demo.sqlite3`; pass `--db ./another-demo.sqlite3` for an isolated
 run.
 
@@ -384,12 +407,17 @@ The local API exposes:
 | --- | --- |
 | `GET /api/status` | Show mode, counts, and audit integrity |
 | `GET /api/policy` | Show the fixed demo mandate |
-| `POST /api/demo/invoice-matches` | Record simulated invoice evidence |
+| `GET /api/demo/invoices/next` | Return the next trusted invoice fixture |
+| `POST /api/demo/invoice-matches` | Validate a catalog invoice and record evidence |
 | `POST /api/proposals` | Evaluate a payout through the real pipeline |
 | `GET /api/audit` | Inspect recorded decisions |
 | `GET /api/pending` | Inspect unresolved local intents |
+| `POST /webhooks/modern-treasury` | Verify a sandbox completion event and reconcile its pending order |
 
 The invoice endpoint accepts `{"event_id":"invoice-1","invoice_id":"INV-001"}`.
+It checks the ID against the server-owned fixture catalog and records the
+catalog amount as evidence. Unknown invoice IDs are rejected. `GET
+/api/demo/invoices/next` returns the next unused fixture for the guided flow.
 The proposal endpoint accepts:
 
 ```json
@@ -505,7 +533,9 @@ requires reconciliation and leaves confirmed history unchanged. Modern
 Treasury retains idempotency results for 24 hours; the external ID protects
 against creating a second order after that window. A completed ACH can still
 be returned later, so the demo can check its status without submitting another
-order. Webhook-driven reconciliation remains future work.
+order. Signed Modern Treasury `completed` webhooks can trigger GET-only
+reconciliation for pending orders. Later returns and reversals are not yet
+applied to confirmed history.
 
 The adapter tests use mocked HTTP and do not contact Modern Treasury. Keep
 credentials in local environment variables or an ignored `.env` file, never
@@ -545,6 +575,7 @@ cp .env.example .env
 | `MODERN_TREASURY_API_KEY` | API Keys page, sandbox key |
 | `MODERN_TREASURY_INTERNAL_ACCOUNT_ID` | Internal Accounts page, account `id` supporting USD ACH |
 | `MODERN_TREASURY_RECIPIENT_ACCOUNT_ID` | Counterparty page, external account `id` |
+| `MODERN_TREASURY_WEBHOOK_KEY` | Developer settings, webhook signing key for the sandbox endpoint |
 
 If the sandbox internal account needs funds, follow the
 [quickstart funding step](https://docs.moderntreasury.com/payments/docs/quickstart)
@@ -578,6 +609,16 @@ A successful replay reads the local receipt
 without another provider request. Use a new `--event-id` only for a separate
 sandbox payout after reconciliation.
 
+For webhook-driven completion, configure a Modern Treasury **sandbox** payment
+order webhook to `https://your-host/webhooks/modern-treasury`, subscribe to the
+`payment_order` topic, and set the same webhook signing key in the service
+environment. The receiver accepts only signed sandbox `completed` events,
+deduplicates `X-Webhook-ID`, and verifies the resulting payment order with
+GET-only API calls before recording it. The webhook service and payout command
+must share the same database file. Free Render storage is ephemeral, so this
+setup does not provide durable provider recovery there; use durable shared
+storage before relying on webhook reconciliation across restarts.
+
 ## Policy and action data
 
 The [validated models](src/veto/models.py) represent spending caps, policy
@@ -597,23 +638,36 @@ python -m pip install -e '.[dev,smt,server]'
 python -c 'import veto; print(veto.__file__)'
 ```
 
-The `smt` extra provides Z3 for policy checks, `server` provides the local
-dashboard and API, and `dev` provides pytest. These extras are installed during
-development;
-the core package can also be installed with `python -m pip install -e .`.
+The `smt` extra provides Z3 for policy checks, `server` provides the dashboard
+and API, and `dev` provides pytest. The core package can also be installed with
+`python -m pip install -e .`.
 
 Run the current test suite with `python -m pytest -q`. GitHub Actions runs it
 on pushes and pull requests using Python 3.11 and 3.14. The workflow installs
-the core package with the `dev` and `smt` extras; later stages will extend it
-when other optional components need their own tests.
+the `dev`, `smt`, and `server` extras before running the suite.
 
-## Planned boundaries
+## Roadmap
 
-- The agent proposes actions; it does not decide whether they satisfy policy.
-- The runtime guard checks each action before the payout adapter runs.
-- The default demo uses simulated payouts. RazorpayX test mode will use test
-  credentials; live payouts are outside the demo scope.
-- Decisions and execution results will be recorded for inspection.
+The current demo includes mandate parsing and checks, pre-execution policy
+enforcement, a server-owned invoice fixture catalog with amount matching,
+simulated dashboard execution, test/sandbox provider adapters, a hash-chained
+audit log, pending recovery, and signed Modern Treasury completion-webhook
+reconciliation.
+
+Remaining work, in priority order:
+
+1. Replace invoice fixtures with a trusted accounting-system source and
+   independently verified invoice evidence.
+2. Handle the full provider lifecycle, including Razorpay webhook recovery and
+   later Modern Treasury returns or reversals.
+3. Add a shared durable database and multi-instance coordination before scaling
+   beyond one host or considering live payments.
+4. Add authentication and workspace isolation before exposing proposal APIs to
+   untrusted users. The public demo currently simulates payments only.
+
+The jury demo does not need persistent history, so the free Render deployment
+keeps its simple SQLite store and may start fresh after a restart. Use durable
+shared storage only if preserving hosted demo state becomes a requirement.
 
 ## License
 
