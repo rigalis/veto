@@ -77,6 +77,83 @@ def test_pending_order_has_clear_retry_instruction(tmp_path, monkeypatch):
     assert "same event id and amount" in result
 
 
+def test_reconcile_records_completed_order_using_get_only(tmp_path, monkeypatch):
+    _settings(monkeypatch)
+    requests = []
+    state = {"status": "approved"}
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/api/api_keys/current":
+            return httpx.Response(200, json={"organization_id": ORG, "live_mode": False})
+        return httpx.Response(200, json=_order(request, status=state["status"]))
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    database = tmp_path / "demo.sqlite3"
+    first = run_demo(database=database, amount="1.00", event_id="demo-1", reconcile=True, client=client)
+    assert first.startswith("UNCERTAIN")
+    state["status"] = "completed"
+    second = run_demo(database=database, amount="1.00", event_id="demo-1", reconcile=True, client=client)
+    third = run_demo(database=database, amount="1.00", event_id="demo-1", reconcile=True, client=client)
+    assert second.startswith("APPROVED") and ORDER in second
+    assert "replayed" in third
+    assert [request.method for request in requests] == ["GET"] * 4
+
+
+def test_reconcile_missing_order_never_submits_one(tmp_path, monkeypatch):
+    _settings(monkeypatch)
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/api/api_keys/current":
+            return httpx.Response(200, json={"organization_id": ORG, "live_mode": False})
+        return httpx.Response(404)
+
+    result = run_demo(
+        database=tmp_path / "demo.sqlite3", amount="1.00", event_id="demo-1",
+        reconcile=True, client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert "no payment order found" in result
+    assert [request.method for request in requests] == ["GET", "GET"]
+
+
+def test_uncertain_execution_can_be_confirmed_later_without_second_post(tmp_path, monkeypatch):
+    _settings(monkeypatch)
+    requests = []
+    state = {"created": False, "completed": False}
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/api/api_keys/current":
+            return httpx.Response(200, json={"organization_id": ORG, "live_mode": False})
+        if request.url.path.startswith("/api/external_accounts/"):
+            return httpx.Response(200, json={
+                "id": RECEIVING, "object": "external_account", "live_mode": False,
+                "counterparty_id": "55555555-5555-4555-8555-555555555555",
+            })
+        if request.method == "POST":
+            state["created"] = True
+            external = json.loads(request.content)["external_id"]
+            return httpx.Response(201, json={
+                **_order(request, status="approved"), "external_id": external,
+            })
+        if not state["created"]:
+            return httpx.Response(404)
+        return httpx.Response(200, json=_order(
+            request, status="completed" if state["completed"] else "approved"
+        ))
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    database = tmp_path / "demo.sqlite3"
+    first = run_demo(database=database, amount="1.00", event_id="demo-1", execute=True, client=client)
+    assert first.startswith("UNCERTAIN")
+    state["completed"] = True
+    second = run_demo(database=database, amount="1.00", event_id="demo-1", reconcile=True, client=client)
+    assert second.startswith("APPROVED") and ORDER in second
+    assert sum(request.method == "POST" for request in requests) == 1
+
+
 def test_main_loads_repo_root_env_file_for_explicit_execute(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     for name in (

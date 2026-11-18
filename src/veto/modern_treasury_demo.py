@@ -47,6 +47,7 @@ def run_demo(
     amount: str,
     event_id: str,
     execute: bool = False,
+    reconcile: bool = False,
     client: httpx.Client | None = None,
 ) -> str:
     policy = load_policy(DEMO_MANDATE)
@@ -55,7 +56,7 @@ def run_demo(
     history = HistoryStore(database)
     now = datetime.now(timezone.utc)
 
-    if not execute:
+    if not execute and not reconcile:
         verdict = VetoGate(policy).evaluate(action, now=now, executed=history.confirmed())
         decision = "APPROVED" if verdict.approved else "REJECTED"
         return f"preview: {decision} | {action.amount:.2f} USD | {verdict.reason} | no API call"
@@ -68,11 +69,12 @@ def run_demo(
         receiving_accounts={"demo_vendor": settings["receiving_account_id"]},
         client=client,
     )
-    pipeline = PaymentPipeline(policy, audit, history, executor)
+    pipeline = PaymentPipeline(policy, audit, history, executor.reconcile if reconcile else executor)
     try:
         result = pipeline.run(action, event_id=event_id, now=now)
     except ExecutionUncertainError as exc:
-        return f"UNCERTAIN | {exc} | check the payment order in Modern Treasury; retry with the same event id and amount"
+        instruction = "run --reconcile again later" if reconcile else "run --reconcile with the same event id and amount"
+        return f"UNCERTAIN | {exc} | {instruction}"
     receipt = f" | order: {result.receipt.id}" if result.receipt else ""
     replay = " | replayed" if result.replayed else ""
     return f"{result.decision} | {action.amount:.2f} USD | {result.verdict.reason}{receipt}{replay}"
@@ -83,16 +85,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--amount", default="1.00", help="USD amount, capped at 10 by the demo mandate")
     parser.add_argument("--event-id", default="modern-demo-001", help="stable id for safe retries")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="persistent local history and audit database")
-    parser.add_argument("--execute", action="store_true", help="contact Modern Treasury sandbox")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--execute", action="store_true", help="submit a Modern Treasury sandbox payout")
+    mode.add_argument("--reconcile", action="store_true", help="check an existing sandbox order without submitting one")
     args = parser.parse_args(argv)
-    if args.execute:
+    if args.execute or args.reconcile:
         load_dotenv(Path.cwd() / ".env", override=False)
     try:
-        result = run_demo(database=args.db, amount=args.amount, event_id=args.event_id, execute=args.execute)
+        result = run_demo(database=args.db, amount=args.amount, event_id=args.event_id, execute=args.execute, reconcile=args.reconcile)
     except ValueError as exc:
         parser.error(str(exc))
     print(result)
-    if args.execute and result.startswith(("UNCERTAIN |", "EXEC_ERROR |")):
+    if (args.execute or args.reconcile) and result.startswith(("UNCERTAIN |", "EXEC_ERROR |")):
         raise SystemExit(2)
 
 

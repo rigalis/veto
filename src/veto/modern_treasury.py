@@ -106,6 +106,30 @@ class ModernTreasurySandboxExecutor:
                 raise ExecutionUncertainError("payment order is not completed; reconcile before retrying")
             return ExecutionReceipt(id=existing["id"], status="completed", simulated=True)
 
+    def reconcile(self, action: PaymentAction, *, idempotency_key: str) -> ExecutionReceipt:
+        """Confirm an existing sandbox order using GET requests only."""
+        if action.type != "payout" or action.currency != "USD":
+            raise ExecutionFailed("Modern Treasury sandbox supports USD payouts only")
+        receiving_id = self.receiving_accounts.get(action.merchant)
+        if receiving_id is None:
+            raise ExecutionFailed("no sandbox receiving account is configured for this merchant")
+        if not _PIPELINE_KEY.fullmatch(idempotency_key):
+            raise ExecutionFailed("a valid pipeline idempotency key is required")
+
+        external_id = f"veto_{idempotency_key}"
+        with httpx.Client(timeout=10) if self._client is None else nullcontext(self._client) as client:
+            auth = (self.organization_id, self._api_key)
+            self._verify_sandbox_key(client, auth)
+            order = self._find_order(client, auth, external_id)
+        if order is None:
+            raise ExecutionUncertainError("no payment order found for this event; nothing was recorded")
+        self._verify_order(order, external_id, int(action.amount * 100), receiving_id)
+        if order["status"] != "completed":
+            raise ExecutionUncertainError(
+                f"payment order is {order['status']}; reconcile again after it completes"
+            )
+        return ExecutionReceipt(id=order["id"], status="completed", simulated=True)
+
     def _verify_sandbox_key(self, client: httpx.Client, auth: tuple[str, str]) -> None:
         try:
             response = client.get(f"{API_URL}/api_keys/current", auth=auth)

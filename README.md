@@ -301,7 +301,8 @@ order with `status=completed`. An `approved`, `sent`, `failed`, or unclear order
 requires reconciliation and leaves confirmed history unchanged. Modern
 Treasury retains idempotency results for 24 hours; the external ID protects
 against creating a second order after that window. A completed ACH can still
-be returned later, so a fuller demo needs webhook or status reconciliation.
+be returned later, so the demo can check its status without submitting another
+order. Webhook-driven reconciliation remains future work.
 
 The adapter tests use mocked HTTP and do not contact Modern Treasury. Keep
 credentials in local environment variables or an ignored `.env` file, never
@@ -353,11 +354,19 @@ python -m veto.modern_treasury_demo --execute
 
 The command checks that the API key is for the sandbox before creating an
 order. It retains the database and event ID across runs. An order may start as
-`approved` and complete later; an `UNCERTAIN` result means check its status in
-Modern Treasury, then rerun with the same event ID and amount. Do not change
-the mapping or start another payout while one is unresolved. A successful
-replay reads the local receipt without another provider request. Use
-`--event-id` for a new, separate sandbox payout after reconciliation.
+`approved` and complete later. If the result is `UNCERTAIN`, check the order
+without creating another one:
+
+```bash
+python -m veto.modern_treasury_demo --reconcile
+```
+
+Keep the same `--event-id`, `--amount`, database, and account mapping as the
+original execution. Reconciliation makes only GET requests and records a
+matching completed order in confirmed history and the audit log. A pending
+order remains unconfirmed. A successful replay reads the local receipt
+without another provider request. Use a new `--event-id` only for a separate
+sandbox payout after reconciliation.
 
 ## Policy and action data
 
