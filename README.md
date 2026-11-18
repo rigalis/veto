@@ -291,7 +291,9 @@ The [sandbox executor](src/veto/modern_treasury.py) connects approved USD
 sandbox Organization ID and API key, checks the key's `live_mode` value before
 creating an order, and uses a trusted mapping from merchant labels to sandbox
 counterparty external account IDs. It also needs a sandbox internal account ID
-as the payout source. A live key or unmapped merchant cannot initiate a payout.
+as the payout source. Before creating an order, it checks that the configured
+recipient ID names a linked sandbox External Account. A live key or unmapped
+merchant cannot initiate a payout.
 
 The executor uses both a stable `Idempotency-Key` and a stable `external_id`.
 It looks up an existing order before creating one and records only a matching

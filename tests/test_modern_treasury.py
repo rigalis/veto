@@ -50,6 +50,13 @@ def _key_response(*, live_mode=False):
     return httpx.Response(200, json={"organization_id": ORG, "live_mode": live_mode})
 
 
+def _recipient_response():
+    return httpx.Response(200, json={
+        "id": RECEIVING, "object": "external_account", "live_mode": False,
+        "counterparty_id": "55555555-5555-4555-8555-555555555555",
+    })
+
+
 def test_create_order_uses_trusted_recipient_idempotency_and_sandbox_key():
     requests = []
 
@@ -57,13 +64,15 @@ def test_create_order_uses_trusted_recipient_idempotency_and_sandbox_key():
         requests.append(request)
         if request.url.path == "/api/api_keys/current":
             return _key_response()
+        if request.url.path.startswith("/api/external_accounts/"):
+            return _recipient_response()
         if request.method == "GET":
             return httpx.Response(404)
         return httpx.Response(201, json=_order())
 
     receipt = _executor(handler)(ACTION, idempotency_key=KEY)
     assert receipt.id == ORDER and receipt.status == "completed" and receipt.simulated
-    assert [request.method for request in requests] == ["GET", "GET", "POST"]
+    assert [request.method for request in requests] == ["GET", "GET", "GET", "POST"]
     post = requests[-1]
     assert str(post.url) == f"{API_URL}/payment_orders"
     assert post.headers["Idempotency-Key"] == KEY
@@ -85,6 +94,20 @@ def test_live_key_is_rejected_before_order_request():
     with pytest.raises(ExecutionFailed, match="not a sandbox key"):
         _executor(handler)(ACTION, idempotency_key=KEY)
     assert len(requests) == 1
+
+
+def test_counterparty_id_is_rejected_before_create_and_can_be_retried():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path == "/api/api_keys/current":
+            return _key_response()
+        return httpx.Response(404)
+
+    with pytest.raises(ExecutionUncertainError, match="not a sandbox External Account ID"):
+        _executor(handler)(ACTION, idempotency_key=KEY)
+    assert [request.method for request in calls] == ["GET", "GET", "GET"]
 
 
 def test_unconfigured_merchant_and_currency_never_contact_provider():
@@ -127,6 +150,8 @@ def test_conflicting_create_recovers_existing_order_by_external_id():
         calls.append(request)
         if request.url.path == "/api/api_keys/current":
             return _key_response()
+        if request.url.path.startswith("/api/external_accounts/"):
+            return _recipient_response()
         if request.method == "POST":
             return httpx.Response(409)
         if len(calls) == 2:
@@ -134,7 +159,7 @@ def test_conflicting_create_recovers_existing_order_by_external_id():
         return httpx.Response(200, json=_order())
 
     assert _executor(handler)(ACTION, idempotency_key=KEY).id == ORDER
-    assert [request.method for request in calls] == ["GET", "GET", "POST", "GET"]
+    assert [request.method for request in calls] == ["GET", "GET", "GET", "POST", "GET"]
 
 
 def test_new_order_must_reach_completed_before_confirmation():
@@ -144,6 +169,8 @@ def test_new_order_must_reach_completed_before_confirmation():
         calls.append(request)
         if request.url.path == "/api/api_keys/current":
             return _key_response()
+        if request.url.path.startswith("/api/external_accounts/"):
+            return _recipient_response()
         if request.method == "GET" and len(calls) == 2:
             return httpx.Response(404)
         if request.method == "POST":
@@ -151,7 +178,7 @@ def test_new_order_must_reach_completed_before_confirmation():
         return httpx.Response(200, json=_order(status="completed"))
 
     assert _executor(handler)(ACTION, idempotency_key=KEY).status == "completed"
-    assert [request.method for request in calls] == ["GET", "GET", "POST", "GET"]
+    assert [request.method for request in calls] == ["GET", "GET", "GET", "POST", "GET"]
 
 
 @pytest.mark.parametrize("field,value", [

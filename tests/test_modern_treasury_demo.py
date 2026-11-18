@@ -96,6 +96,11 @@ def test_main_loads_repo_root_env_file_for_explicit_execute(tmp_path, monkeypatc
         calls.append(request)
         if request.url.path == "/api/api_keys/current":
             return httpx.Response(200, json={"organization_id": ORG, "live_mode": False})
+        if request.url.path.startswith("/api/external_accounts/"):
+            return httpx.Response(200, json={
+                "id": RECEIVING, "object": "external_account", "live_mode": False,
+                "counterparty_id": "55555555-5555-4555-8555-555555555555",
+            })
         if request.method == "GET":
             return httpx.Response(404)
         body = json.loads(request.content)
@@ -114,7 +119,7 @@ def test_main_loads_repo_root_env_file_for_explicit_execute(tmp_path, monkeypatc
     monkeypatch.setattr(demo, "ModernTreasurySandboxExecutor", injected_executor)
     main(["--execute", "--db", str(tmp_path / "demo.sqlite3")])
     assert "APPROVED" in capsys.readouterr().out
-    assert len(calls) == 3
+    assert len(calls) == 4
 
 
 def test_main_returns_failure_status_for_unresolved_order(tmp_path, monkeypatch, capsys):

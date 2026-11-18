@@ -105,6 +105,17 @@ def test_uncertain_execution_can_retry_with_same_key(tmp_path):
     assert keys[0] == keys[1]
 
 
+def test_executor_uncertainty_detail_reaches_caller_without_audit(tmp_path):
+    def executor(action, *, idempotency_key):
+        raise ExecutionUncertainError("payment order is still processing")
+
+    pipeline, audit, history = _pipeline(tmp_path, executor)
+    with pytest.raises(ExecutionUncertainError, match="still processing"):
+        pipeline.run(_action(), event_id="pending-1", now=NOW)
+    assert audit.entries() == ()
+    assert history.confirmed() == ()
+
+
 def test_unconfirmed_receipt_never_becomes_approved_history(tmp_path):
     pipeline, audit, history = _pipeline(
         tmp_path, lambda action, *, idempotency_key: ExecutionReceipt("receipt-1", "queued", True)

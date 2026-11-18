@@ -153,6 +153,8 @@ class PaymentPipeline:
                 )
                 record = AuditLog._append_connection(db, event)
                 return PipelineResult("EXEC_ERROR", verdict, record, None)
+            except ExecutionUncertainError:
+                raise
             except Exception as exc:
                 raise ExecutionUncertainError(
                     f"execution outcome for {event_id!r} is unknown; reconcile before continuing"

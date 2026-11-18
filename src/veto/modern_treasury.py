@@ -65,6 +65,7 @@ class ModernTreasurySandboxExecutor:
             self._verify_sandbox_key(client, auth)
             existing = self._find_order(client, auth, external_id)
             if existing is None:
+                self._verify_recipient(client, auth, receiving_id)
                 try:
                     response = client.post(
                         f"{API_URL}/payment_orders",
@@ -87,6 +88,10 @@ class ModernTreasurySandboxExecutor:
                     else:
                         response.raise_for_status()
                         existing = response.json()
+                except httpx.HTTPStatusError as exc:
+                    raise ExecutionUncertainError(
+                        f"Modern Treasury payment order request returned HTTP {exc.response.status_code}; reconcile before retrying"
+                    ) from exc
                 except (httpx.HTTPError, ValueError) as exc:
                     raise ExecutionUncertainError("payment order outcome unknown; reconcile before retrying") from exc
 
@@ -112,6 +117,27 @@ class ModernTreasurySandboxExecutor:
             raise ExecutionUncertainError("Modern Treasury key organization does not match")
         if body.get("live_mode") is not False:
             raise ExecutionFailed("Modern Treasury key is not a sandbox key")
+
+    @staticmethod
+    def _verify_recipient(client: httpx.Client, auth: tuple[str, str], receiving_id: str) -> None:
+        try:
+            response = client.get(f"{API_URL}/external_accounts/{receiving_id}", auth=auth)
+            if response.status_code == 404:
+                raise ExecutionUncertainError(
+                    "configured recipient is not a sandbox External Account ID"
+                )
+            response.raise_for_status()
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ExecutionUncertainError("cannot verify sandbox recipient account") from exc
+        if (
+            not isinstance(body, dict)
+            or body.get("id") != receiving_id
+            or body.get("object") != "external_account"
+            or body.get("live_mode") is not False
+            or not body.get("counterparty_id")
+        ):
+            raise ExecutionUncertainError("configured recipient is not a linked sandbox External Account")
 
     @staticmethod
     def _find_order(client: httpx.Client, auth: tuple[str, str], external_id: str) -> dict | None:
