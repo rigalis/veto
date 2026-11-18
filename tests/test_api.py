@@ -118,6 +118,26 @@ def test_api_only_records_catalog_invoices_for_matching_vendor(tmp_path):
     assert _request(app, "GET", "/api/status").json()["confirmed_count"] == 0
 
 
+def test_api_reset_clears_shared_simulated_workspace(tmp_path):
+    app = create_app(tmp_path / "demo.sqlite3")
+    _request(app, "POST", "/api/demo/invoice-matches", json={
+        "event_id": "invoice-1", "invoice_id": "INV-001",
+    })
+    _request(app, "POST", "/api/proposals", json=_payout("payout-1", "INV-001"))
+
+    missing_confirmation = _request(app, "POST", "/api/demo/reset", json={})
+    assert missing_confirmation.status_code == 400
+    result = _request(app, "POST", "/api/demo/reset", json={"confirm": True})
+    assert result.json() == {
+        "status": "reset", "confirmed_count": 0, "pending_count": 0, "audit_count": 0,
+    }
+    assert _request(app, "GET", "/api/status").json() == {
+        "mode": "simulated", "confirmed_count": 0, "pending_count": 0,
+        "audit_count": 0, "audit_valid": True,
+    }
+    assert _request(app, "GET", "/api/demo/invoices/next").json()["invoice_id"] == "INV-001"
+
+
 def test_local_mandate_blocks_usd_payouts(tmp_path):
     app = create_app(tmp_path / "demo.sqlite3")
     proposal = _payout("usd-proposal", "INV-USD")

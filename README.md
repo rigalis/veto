@@ -43,7 +43,8 @@ provider credentials.
 The dashboard shows live policy decisions, mandate details, audit history,
 and the recovery queue from one local SQLite database.
 Invoice evidence is checked against a server-owned demo catalog, including
-merchant, currency, and amount.
+merchant, currency, and amount. Use **Reset shared demo data** in the workspace
+menu to clear the simulated audit, history, and counters for all visitors.
 
 ![Veto feature guide with indexed sidebar](docs/screenshots/guide.png)
 
@@ -384,7 +385,8 @@ Open `http://127.0.0.1:8000/` for the dashboard. It has a guided flow that
 validates a catalog invoice, blocks a wrong invoice or amount, approves a
 matching payout, and blocks a duplicate. Use the proposal form for catalog-backed scenarios;
 the audit table, policy view, and pending list read from the same SQLite data.
-The workspace menu shows the active mandate and local storage. The currency
+The workspace menu shows the active mandate and shared storage, and includes a
+confirmed reset for simulated data. The currency
 selector accepts INR and USD so you can inspect the boundary: this demo mandate
 can approve INR payouts, while a USD payout is rejected because it has no USD cap.
 The separate `/guide` page has a sidebar index for the mandate, static checks,
@@ -410,6 +412,7 @@ The local API exposes:
 | `GET /api/demo/invoices/next` | Return the next trusted invoice fixture |
 | `POST /api/demo/invoice-matches` | Validate a catalog invoice and record evidence |
 | `POST /api/proposals` | Evaluate a payout through the real pipeline |
+| `POST /api/demo/reset` | Reset simulated state after explicit confirmation |
 | `GET /api/audit` | Inspect recorded decisions |
 | `GET /api/pending` | Inspect unresolved local intents |
 | `POST /webhooks/modern-treasury` | Verify a sandbox completion event and reconcile its pending order |
@@ -418,6 +421,9 @@ The invoice endpoint accepts `{"event_id":"invoice-1","invoice_id":"INV-001"}`.
 It checks the ID against the server-owned fixture catalog and records the
 catalog amount as evidence. Unknown invoice IDs are rejected. `GET
 /api/demo/invoices/next` returns the next unused fixture for the guided flow.
+The reset endpoint requires `{"confirm":true}`. It clears only a clean
+simulated workspace; it refuses to delete pending intents, provider-backed
+receipts, webhook records, or an invalid audit chain.
 The proposal endpoint accepts:
 
 ```json

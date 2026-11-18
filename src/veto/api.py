@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from veto.audit import AuditEventConflictError, AuditIntegrityError, AuditLog
+from veto.demo_reset import DemoResetBlocked, reset_demo_database
 from veto.invoices import DemoInvoiceCatalog
 from veto.models import PaymentAction
 from veto.pipeline import ExecutionUncertainError, PaymentPipeline, PipelineResult
@@ -58,6 +59,12 @@ class DemoInvoiceRequest(_Request):
         if not value.strip():
             raise ValueError("merchant cannot be blank")
         return value
+
+
+class DemoResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool = False
 
 
 class DecisionResponse(BaseModel):
@@ -153,6 +160,21 @@ def create_app(database: Path = DEFAULT_DB) -> FastAPI:
             "pending_count": len(pending.entries()),
             "audit_count": chain.checked,
             "audit_valid": chain.ok,
+        }
+
+    @app.post("/api/demo/reset")
+    async def reset_demo(request: DemoResetRequest) -> dict[str, str | int]:
+        if not request.confirm:
+            raise HTTPException(status_code=400, detail="explicit reset confirmation is required")
+        try:
+            reset_demo_database(database)
+        except DemoResetBlocked as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "status": "reset",
+            "confirmed_count": len(history.confirmed()),
+            "pending_count": len(pending.entries()),
+            "audit_count": audit.verify_chain().checked,
         }
 
     @app.get("/api/policy")

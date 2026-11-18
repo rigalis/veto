@@ -8,6 +8,7 @@ const ui = {
   submit: byId("submit-proposal"),
   verify: byId("verify-invoice"),
   guided: byId("guided-demo"),
+  reset: byId("reset-demo"),
   toast: byId("toast"),
 };
 
@@ -64,7 +65,7 @@ function toast(message, kind = "info") {
 
 function setBusy(value) {
   state.busy = value;
-  for (const button of [ui.submit, ui.guided]) button.disabled = value;
+  for (const button of [ui.submit, ui.guided, ui.reset]) button.disabled = value;
   ui.currency.disabled = value;
   syncCurrency();
 }
@@ -327,6 +328,26 @@ async function manualVerify() {
   finally { setBusy(false); }
 }
 
+async function resetDemo() {
+  if (state.busy) return;
+  const confirmed = window.confirm(
+    "Reset the shared simulated demo for all visitors? This clears its audit history and counters."
+  );
+  if (!confirmed) return;
+  setBusy(true);
+  try {
+    await api("/api/demo/reset", {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    });
+    state.selected = null;
+    await refresh();
+    toast("Shared demo data reset. All counts are back to zero.", "success");
+  } catch (error) {
+    toast(error.message, "error");
+  } finally { setBusy(false); }
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function flowLine(label, decision, expected) {
@@ -475,6 +496,7 @@ document.querySelectorAll("[data-nav]").forEach((link) => {
 
 byId("proposal-form").addEventListener("submit", manualSubmit);
 ui.verify.addEventListener("click", manualVerify);
+ui.reset.addEventListener("click", resetDemo);
 ui.guided.addEventListener("click", guidedFlow);
 window.addEventListener("focus", refresh);
 
