@@ -159,15 +159,39 @@ class VetoGate:
             for precondition in rule.preconditions:
                 if action.type != precondition.before_action:
                     continue
+                invoice_required = (
+                    action.type == "payout" and precondition.required_action == "invoice_match"
+                )
+                if invoice_required and action.invoice_id is None:
+                    return Verdict(
+                        False,
+                        "missing_invoice_id",
+                        "payout needs an invoice id to satisfy invoice_match",
+                        rule.id,
+                        precondition.location or rule.location,
+                    )
                 if not any(
                     record.action.type == precondition.required_action
+                    and (not invoice_required or record.action.invoice_id == action.invoice_id)
                     for record in context_history
                 ):
+                    detail = f" and invoice {action.invoice_id!r}" if invoice_required else ""
                     return Verdict(
                         False,
                         "missing_precondition",
                         f"{precondition.required_action} must occur before {action.type} "
-                        f"for merchant {action.merchant!r}",
+                        f"for merchant {action.merchant!r}{detail}",
+                        rule.id,
+                        precondition.location or rule.location,
+                    )
+                if invoice_required and any(
+                    record.action.type == "payout" and record.action.invoice_id == action.invoice_id
+                    for record in context_history
+                ):
+                    return Verdict(
+                        False,
+                        "invoice_already_paid",
+                        f"invoice {action.invoice_id!r} already has a confirmed payout",
                         rule.id,
                         precondition.location or rule.location,
                     )

@@ -24,7 +24,7 @@ Test-mode provider adapters for Razorpay and Modern Treasury are also in place.
 The Python package, mandate grammar, example policies, parser, typed models,
 policy loader, both tiers of static checks, and VetoGate's policy checks are
 in place. VetoGate evaluates merchant rules, spending caps, validity windows,
-preconditions, and action order using confirmed action history. A SQLite store
+preconditions, invoice IDs, and action order using confirmed action history. A SQLite store
 now preserves that history across plans and restarts. A separate hash-chained
 audit log is also in place. The payment pipeline connects the guard, a
 pluggable executor, confirmed history, and audit records. A simulated executor
@@ -129,9 +129,12 @@ print(verdict)
 
 Prior actions satisfy preconditions and sequence steps only for the same
 merchant and currency. A sequence governs its first ordered pass; after that,
-other policy checks continue to apply. The current action model has no invoice
-identifier, so `invoice_match` is not yet tied to one specific payout. That
-binding must be added before using this as a real invoice-payment control.
+other policy checks continue to apply. For policies requiring `invoice_match`
+before `payout`, a payout must also carry an `invoice_id` matching a confirmed
+`invoice_match` for that merchant and currency. The same invoice ID cannot
+authorize a second confirmed payout. The demo supplies simulated invoice
+evidence; Veto does not yet verify invoice documents or amounts from a trusted
+source.
 
 ## Confirmed action history
 
@@ -181,7 +184,7 @@ history with the audit record. It cannot roll back an external payout. If the
 process stops after a provider succeeds but before the local commit, Veto may
 have no record of that payout. The pipeline therefore does not yet provide
 safe live-money recovery or multi-worker operation. A durable pending state,
-provider reconciliation, and invoice-to-payout binding are still needed.
+automatic provider reconciliation, and trusted invoice verification are still needed.
 
 ## Run the simulated demo
 
@@ -204,6 +207,18 @@ python -m veto.demo --db ./veto-demo.sqlite3
 Running the command again with that same database replays the two recorded
 event ids; it does not create another payout or audit entry. The executor
 returns deterministic fake receipts and makes no network calls.
+
+### Run the invoice binding demo
+
+```bash
+python -m veto.invoice_demo
+```
+
+This simulated walkthrough confirms `INV-001`, rejects a payout for `INV-002`,
+approves one payout for `INV-001`, then rejects a second payout for that same
+invoice. It needs no keys or money. Pass `--db ./invoice-demo.sqlite3` to keep
+the audit and confirmed history; rerunning with the same database replays all
+four decisions.
 
 ## RazorpayX test adapter
 

@@ -15,8 +15,8 @@ from veto.vetogate import VetoGate
 NOW = datetime(2026, 11, 17, 12, tzinfo=timezone.utc)
 
 
-def _action(action_type="payout", amount="40", merchant="vendor_123"):
-    return PaymentAction(type=action_type, amount=amount, currency="INR", merchant=merchant)
+def _action(action_type="payout", amount="40", merchant="vendor_123", invoice_id=None):
+    return PaymentAction(type=action_type, amount=amount, currency="INR", merchant=merchant, invoice_id=invoice_id)
 
 
 def test_history_persists_across_plans_and_reopenings(tmp_path):
@@ -49,13 +49,15 @@ def test_confirmed_invoice_enables_later_payout_after_reopening(tmp_path):
     )
     gate = VetoGate(policy)
     store = HistoryStore(path)
-    payout = _action()
+    payout = _action(invoice_id="INV-001")
     assert gate.evaluate(payout, now=NOW, executed=store.confirmed()).code == "missing_precondition"
 
-    invoice = _action(action_type="invoice_match", amount="0")
+    invoice = _action(action_type="invoice_match", amount="0", invoice_id="INV-001")
     store.record_confirmed("invoice-1", ExecutedAction(action=invoice, executed_at=NOW))
     reopened = HistoryStore(path)
     assert gate.evaluate(payout, now=NOW + timedelta(seconds=1), executed=reopened.confirmed()).approved
+    reopened.record_confirmed("payout-1", ExecutedAction(action=payout, executed_at=NOW + timedelta(seconds=1)))
+    assert gate.evaluate(payout, now=NOW + timedelta(seconds=2), executed=HistoryStore(path).confirmed()).code == "invoice_already_paid"
 
 
 def test_event_id_retries_are_idempotent_and_conflicts_fail(tmp_path):
@@ -90,7 +92,7 @@ def test_blank_event_id_is_rejected(tmp_path):
         store.record_confirmed("  ", ExecutedAction(action=_action(), executed_at=NOW))
 
 
-def test_existing_history_database_adds_nullable_payment_id(tmp_path):
+def test_existing_history_database_adds_optional_action_ids(tmp_path):
     path = tmp_path / "old.sqlite3"
     with sqlite3.connect(path) as db:
         db.execute(
@@ -105,8 +107,12 @@ def test_existing_history_database_adds_nullable_payment_id(tmp_path):
         )
     store = HistoryStore(path)
     assert store.confirmed()[0].action.payment_id is None
+    assert store.confirmed()[0].action.invoice_id is None
     refund = PaymentAction(
         type="refund", amount="5", currency="INR", merchant="customer_a", payment_id="pay_test123"
     )
     store.record_confirmed("refund-1", ExecutedAction(action=refund, executed_at=NOW))
     assert HistoryStore(path).confirmed()[1].action.payment_id == "pay_test123"
+    invoice = _action(action_type="invoice_match", amount="0", invoice_id="INV-001")
+    store.record_confirmed("invoice-1", ExecutedAction(action=invoice, executed_at=NOW))
+    assert HistoryStore(path).confirmed()[2].action.invoice_id == "INV-001"

@@ -15,8 +15,8 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 NOW = datetime(2026, 11, 17, 12, tzinfo=timezone.utc)
 
 
-def _action(amount="40", merchant="vendor_123", action_type="payout", currency="INR"):
-    return PaymentAction(type=action_type, amount=amount, currency=currency, merchant=merchant)
+def _action(amount="40", merchant="vendor_123", action_type="payout", currency="INR", invoice_id=None):
+    return PaymentAction(type=action_type, amount=amount, currency=currency, merchant=merchant, invoice_id=invoice_id)
 
 
 @pytest.fixture
@@ -104,26 +104,48 @@ def test_extremely_long_window_still_counts_confirmed_history():
 
 def test_precondition_requires_confirmed_prior_action():
     gate = VetoGate(load_policy_file(EXAMPLES / "strict_treasury.mdt"))
-    assert gate.evaluate(_action(), now=NOW, executed=()).code == "missing_precondition"
+    payout = _action(invoice_id="INV-001")
+    assert gate.evaluate(payout, now=NOW, executed=()).code == "missing_precondition"
 
-    invoice = _action("0", action_type="invoice_match")
+    invoice = _action("0", action_type="invoice_match", invoice_id="INV-001")
     assert gate.evaluate(invoice, now=NOW, executed=()).approved
     history = (ExecutedAction(action=invoice, executed_at=NOW),)
-    assert gate.evaluate(_action(), now=NOW, executed=history).approved
+    assert gate.evaluate(payout, now=NOW, executed=history).approved
 
 
 def test_precondition_is_bound_to_merchant_and_currency():
     gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
     other_vendor = ExecutedAction(
-        action=_action("0", merchant="vendor_456", action_type="invoice_match"),
+        action=_action("0", merchant="vendor_456", action_type="invoice_match", invoice_id="INV-001"),
         executed_at=NOW,
     )
     other_currency = ExecutedAction(
-        action=_action("0", action_type="invoice_match", currency="USD"),
+        action=_action("0", action_type="invoice_match", currency="USD", invoice_id="INV-001"),
         executed_at=NOW,
     )
-    assert gate.evaluate(_action(), now=NOW, executed=(other_vendor,)).code == "missing_precondition"
-    assert gate.evaluate(_action(), now=NOW, executed=(other_currency,)).code == "missing_precondition"
+    payout = _action(invoice_id="INV-001")
+    assert gate.evaluate(payout, now=NOW, executed=(other_vendor,)).code == "missing_precondition"
+    assert gate.evaluate(payout, now=NOW, executed=(other_currency,)).code == "missing_precondition"
+
+
+def test_invoice_precondition_requires_matching_unused_invoice():
+    gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
+    invoice = ExecutedAction(
+        action=_action("0", action_type="invoice_match", invoice_id="INV-001"),
+        executed_at=NOW,
+    )
+    assert gate.evaluate(_action(), now=NOW, executed=(invoice,)).code == "missing_invoice_id"
+    assert gate.evaluate(_action(invoice_id="INV-002"), now=NOW, executed=(invoice,)).code == "missing_precondition"
+    payout = _action(invoice_id="INV-001")
+    assert gate.evaluate(payout, now=NOW, executed=(invoice,)).approved
+    paid = ExecutedAction(action=payout, executed_at=NOW)
+    assert gate.evaluate(payout, now=NOW, executed=(invoice, paid)).code == "invoice_already_paid"
+
+
+def test_unidentified_invoice_match_cannot_authorize_payout():
+    gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
+    prior = ExecutedAction(action=_action("0", action_type="invoice_match"), executed_at=NOW)
+    assert gate.evaluate(_action(invoice_id="INV-001"), now=NOW, executed=(prior,)).code == "missing_precondition"
 
 
 def test_validity_window_includes_bounds_and_rejects_outside():

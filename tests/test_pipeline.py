@@ -207,9 +207,10 @@ def test_invoice_then_payout_uses_confirmed_plan_prefix(tmp_path):
         return ExecutionReceipt(f"receipt-{action.type}", "processed", True)
 
     pipeline, audit, history = _pipeline(tmp_path, executor, policy)
-    invoice = PaymentAction(type="invoice_match", amount=0, currency="INR", merchant="vendor_123")
+    invoice = PaymentAction(type="invoice_match", amount=0, currency="INR", merchant="vendor_123", invoice_id="INV-001")
     first = pipeline.run(invoice, event_id="invoice-1", now=NOW)
-    second = pipeline.run(_action(), event_id="payout-1", now=NOW + timedelta(seconds=1))
+    payout = PaymentAction(type="payout", amount="40", currency="INR", merchant="vendor_123", invoice_id="INV-001")
+    second = pipeline.run(payout, event_id="payout-1", now=NOW + timedelta(seconds=1))
     assert first.decision == second.decision == "APPROVED"
     assert [entry.action.type for entry in history.confirmed()] == ["invoice_match", "payout"]
     assert audit.verify_chain().ok
