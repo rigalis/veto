@@ -15,21 +15,16 @@ enforces the resulting rules against each proposal.
 [See the technical architecture](#technical-architecture) ·
 [Explore the API endpoints](#api-endpoints)
 
-## Host a public demo
+## Live demo
 
-Deploy this repository to Render with the included blueprint:
+[Open the Veto demo](https://veto-demo-isf3.onrender.com/). The [feature
+guide](https://veto-demo-isf3.onrender.com/guide) and [API reference](https://veto-demo-isf3.onrender.com/docs)
+are available from the same deployment.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rigalis/veto)
-
-Render will ask you to connect your GitHub account and create the `veto-demo`
-web service. When the deployment finishes, open its `onrender.com` URL. The
-dashboard is at `/`, the feature guide at `/guide`, and the API reference at
-`/docs`. The service uses the simulated executor only; it does not need or load
-payment-provider credentials and cannot send real payments.
-
-The free service may take about a minute to wake after inactivity, and its
-local SQLite data can reset when Render restarts, sleeps, or redeploys it. This
-setup is intended for a jury demo, not production or durable shared state.
+The hosted dashboard uses simulated execution only. It needs no payment
+provider credentials and cannot send real payments. The free service may take
+about a minute to wake after inactivity, and its local demo data can reset
+after a restart or redeploy.
 
 ## See Veto
 
