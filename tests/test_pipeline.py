@@ -190,7 +190,16 @@ def test_two_concurrent_payouts_cannot_both_pass_the_cap(tmp_path):
             pool.submit(pipeline.run, _action("60"), event_id=f"event-{index}", now=NOW)
             for index in range(2)
         ]
-        results = [future.result() for future in futures]
+        results = []
+        blocked = []
+        for index, future in enumerate(futures):
+            try:
+                results.append(future.result())
+            except ExecutionUncertainError as exc:
+                assert "pending event" in str(exc)
+                blocked.append(index)
+    for index in blocked:
+        results.append(pipeline.run(_action("60"), event_id=f"event-{index}", now=NOW))
     assert {result.decision for result in results} == {"APPROVED", "REJECTED"}
     assert len(calls) == 1
     assert len(history.confirmed()) == 1

@@ -25,7 +25,7 @@ dev = ["pytest>=8,<10"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-veto = ["mandate.lark"]
+veto = ["mandate.lark", "dashboard/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

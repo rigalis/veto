@@ -1,38 +1,98 @@
 # Veto
 
-Veto is a work-in-progress policy verifier and runtime guard for agentic
-payments. An agent may propose a payment, but Veto will check the proposed
-action against a mandate before any payment API is called.
+![Veto wordmark on a dark gray background](docs/veto-banner.svg)
 
-## What we are building
+Veto is a policy guard for agentic payments. It checks an agent's proposed
+payment against a readable mandate before an executor can act, then records
+the decision and its evidence.
 
-```text
-mandate text -> parser -> policy checks -> enforceable rules
-                                              |
-agent proposal -> structured action -> runtime guard -> payout adapter
-                                      |
-                                      +-------> audit log
+**Neurosymbolic guardrails for agentic payments:** mandates are parsed with
+Lark, policy consistency can be checked with SMT, and the runtime guard
+enforces the resulting rules against each proposal.
+
+[Open the dashboard](#start-the-simulated-demo) ·
+[Read the in-app guide](#in-app-guide) ·
+[See how proposals are handled](#how-a-proposal-is-handled) ·
+[Explore the API endpoints](#api-endpoints)
+
+## See Veto
+
+The intro screen leads into a local simulation. The dashboard exposes the
+proposal flow, active mandate, audit history, pending intents, and rolling
+INR cap usage. The Guide page documents each feature and links to relevant
+dashboard views.
+
+![Veto intro screen](docs/screenshots/intro.png)
+
+The intro explains the product and enters the simulated workspace without
+provider credentials.
+
+![Veto dashboard after entering the demo](docs/screenshots/dashboard.png)
+
+The dashboard shows live policy decisions, mandate details, audit history,
+and the recovery queue from one local SQLite database.
+
+![Veto feature guide with indexed sidebar](docs/screenshots/guide.png)
+
+The Guide is a separate page with a sidebar index for each major feature.
+
+## What Veto does
+
+- **Checks mandates before execution.** Rules cover spending caps, merchant
+  allowlists and denylists, validity windows, invoice preconditions, and action
+  order.
+- **Combines symbolic policy with constraint checks.** Lark parses mandate
+  text into typed rules. Fast static checks catch common mistakes; optional
+  Z3 checks policy action-order cycles.
+- **Keeps execution accountable.** The pipeline records an approved intent
+  before calling an executor, uses a stable idempotency key, and adds an action
+  to confirmed history only after a confirmed receipt.
+- **Preserves decision evidence.** Approved, rejected, and failed decisions
+  enter a SHA-256 hash-chained SQLite audit log. Uncertain outcomes remain
+  pending for reconciliation.
+
+## Start the simulated demo
+
+```bash
+python -m pip install -e '.[server]'
+python -m veto.api
 ```
 
-The end-to-end demo shows a payment above a mandate's cap being rejected, a
-compliant payment being approved, and both decisions recorded in an audit
-trail. It uses simulated payouts, so it requires no money or API keys.
-Test-mode provider adapters for Razorpay and Modern Treasury are also in place.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000), choose **Enter demo**,
+and run the guided flow. The browser dashboard uses simulated execution only;
+it needs no provider keys and does not move real money. Use a separate
+database for a clean walkthrough:
+
+```bash
+python -m veto.api --db ./fresh-demo.sqlite3
+```
+
+### In-app guide
+
+Open [http://127.0.0.1:8000/guide](http://127.0.0.1:8000/guide) for an indexed
+walkthrough of mandates, static checks, runtime enforcement, invoice evidence,
+execution and replay, audit integrity, pending recovery, currencies, provider
+demos, and the local API.
+
+## How a proposal is handled
+
+```text
+mandate text -> Lark parser -> static checks -> typed policy
+                                             |
+agent proposal -> VetoGate -> simulated or test executor -> receipt
+                     |                               |
+                     +-> rejection audit             +-> confirmed history
+                     +-------------------------------+-> hash-chained audit
+```
 
 ## Current state
 
-The Python package, mandate grammar, example policies, parser, typed models,
-policy loader, both tiers of static checks, and VetoGate's policy checks are
-in place. VetoGate evaluates merchant rules, spending caps, validity windows,
-preconditions, invoice IDs, and action order using confirmed action history.
-A SQLite store now preserves that history and pending intents across restarts. A separate hash-chained
-audit log is also in place. The payment pipeline connects the guard, a
-pluggable executor, confirmed history, and audit records. A simulated executor
-and command-line demo exercise that path. RazorpayX payout, Razorpay Payments
-refund, and Modern Treasury sandbox payout adapters have mocked HTTP tests.
-The Modern Treasury payout and Razorpay Payments refund paths also have
-guarded test-mode commands. A local simulated API exposes decisions and audit
-records for the planned browser dashboard.
+The repository includes the Python policy package, mandate grammar, examples,
+static and SMT checks, VetoGate, SQLite confirmed history, pending recovery,
+the payment pipeline, a simulated dashboard/API, and test-mode adapters for
+RazorpayX payouts, Razorpay Payments refunds, and Modern Treasury payouts.
+Provider adapters have mocked HTTP tests; the browser dashboard remains a
+local simulation.
 
 ## Mandate syntax
 
@@ -224,7 +284,7 @@ invoice. It needs no keys or money. Pass `--db ./invoice-demo.sqlite3` to keep
 the audit and confirmed history; rerunning with the same database replays all
 four decisions.
 
-### Run the local demo API
+### Run the local dashboard and demo API
 
 Install the `server` extra, then start the API from the repository root:
 
@@ -233,11 +293,26 @@ python -m pip install -e '.[server]'
 python -m veto.api
 ```
 
-Open `http://127.0.0.1:8000/docs` to try the endpoints. The server binds to
-your machine's loopback address, uses simulated execution only, and never
-loads payment-provider credentials. Its default SQLite database is
+Open `http://127.0.0.1:8000/` for the dashboard. It has a guided flow that
+records simulated invoice evidence, blocks a wrong invoice, approves a matching
+payout, and blocks a duplicate. Use the proposal form for your own scenarios;
+the audit table, policy view, and pending list read from the same SQLite data.
+The workspace menu shows the active mandate and local storage. The currency
+selector accepts INR and USD so you can inspect the boundary: this demo mandate
+can approve INR payouts, while a USD payout is rejected because it has no USD cap.
+The separate `/guide` page has a sidebar index for the mandate, static checks,
+runtime guard, invoice evidence, execution path, audit chain, pending recovery,
+currency behavior, and separate provider demos.
+The API reference remains at `http://127.0.0.1:8000/docs`.
+
+The server binds to your machine's loopback address, uses simulated execution
+only, and never loads payment-provider credentials. Its default SQLite database is
 `data/veto-api-demo.sqlite3`; pass `--db ./another-demo.sqlite3` for an isolated
-run. The endpoints are:
+run.
+
+#### API endpoints
+
+The local API exposes:
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -457,7 +532,7 @@ python -c 'import veto; print(veto.__file__)'
 ```
 
 The `smt` extra provides Z3 for policy checks, `server` provides the local
-demo API, and `dev` provides pytest. These extras are installed during
+dashboard and API, and `dev` provides pytest. These extras are installed during
 development;
 the core package can also be installed with `python -m pip install -e .`.
 

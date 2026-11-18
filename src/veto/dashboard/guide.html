@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171717">
+    <meta name="description" content="Learn how Veto validates mandates, checks agent payment proposals, records audit evidence, and handles uncertain execution.">
+    <title>Veto · Guide</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script defer src="/assets/guide.js"></script>
+  </head>
+  <body>
+    <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="i-grid" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-2.4-1.4-5.1-1.7-9-1v14c3.9-.7 6.6-.4 9 1 2.4-1.4 5.1-1.7 9-1V4c-3.9-.7-6.6-.4-9 1Z"/><path d="M12 5v14"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 2h7l5 5v15H5V2h2Z"/><path d="M14 2v6h5M8 13h8M8 17h8"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 4h7v7M20 4l-9 9M20 14v6H4V4h6"/></symbol>
+    </svg>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-block"><a class="brand" href="/" aria-label="Veto dashboard"><span class="brand-name">veto<span class="brand-dot">.</span></span></a><span class="brand-caption">agent payment guard</span></div>
+        <nav class="side-nav docs-side-nav" aria-label="Guide index">
+          <p class="nav-label">WORKSPACE</p>
+          <a class="nav-link" href="/"><svg class="icon"><use href="#i-grid"/></svg>Dashboard</a>
+          <p class="nav-label nav-label-secondary">GUIDE</p>
+          <a class="nav-link active" href="#overview" data-doc-nav="overview"><svg class="icon"><use href="#i-book"/></svg>How Veto works</a>
+          <a class="docs-index-link" href="#quick-start" data-doc-nav="quick-start">Quick start</a>
+          <a class="docs-index-link" href="#mandates" data-doc-nav="mandates">Mandates</a>
+          <a class="docs-index-link" href="#static-checks" data-doc-nav="static-checks">Static checks</a>
+          <a class="docs-index-link" href="#runtime-guard" data-doc-nav="runtime-guard">Runtime guard</a>
+          <a class="docs-index-link" href="#invoice-evidence" data-doc-nav="invoice-evidence">Invoice evidence</a>
+          <a class="docs-index-link" href="#execution" data-doc-nav="execution">Execution and replay</a>
+          <a class="docs-index-link" href="#audit" data-doc-nav="audit">Audit trail</a>
+          <a class="docs-index-link" href="#recovery" data-doc-nav="recovery">Pending recovery</a>
+          <a class="docs-index-link" href="#currency" data-doc-nav="currency">Currencies</a>
+          <a class="docs-index-link" href="#providers" data-doc-nav="providers">Provider demos</a>
+          <a class="docs-index-link" href="#api" data-doc-nav="api">Local API</a>
+        </nav>
+        <div class="sidebar-bottom"><div class="sandbox-note"><span class="sandbox-toggle" aria-hidden="true"><span></span></span><div><strong>Sandbox mode</strong><small>Simulated execution</small></div></div><div class="sidebar-footer">Veto / local environment</div></div>
+      </aside>
+      <div class="main-shell">
+        <header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="Open guide index" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><strong class="topbar-title">Guide</strong></div><div class="topbar-right"><a class="topbar-link" href="/">Open dashboard</a><a class="topbar-refresh" href="/docs" target="_blank" rel="noopener noreferrer">API reference</a></div></header>
+        <main class="content docs-content">
+          <section class="docs-intro" id="overview"><h1>How Veto works</h1><p>Veto checks an agent's proposed payment against a mandate before any executor can act. This guide explains the controls visible in the demo and the limits of the local simulation.</p></section>
+          <div class="guide-steps" aria-label="Decision path"><div><b>1</b><strong>Write a mandate</strong><span>Define spending and evidence rules.</span></div><div><b>2</b><strong>Evaluate a proposal</strong><span>Check policy against confirmed history.</span></div><div><b>3</b><strong>Execute or block</strong><span>Only approved actions reach an executor.</span></div><div><b>4</b><strong>Record evidence</strong><span>Preserve decisions and receipts in the audit chain.</span></div></div>
+
+          <section class="docs-section" id="quick-start"><h2>Quick start</h2><p>Start the local server from the repository root, then open the dashboard. No payment keys or money are needed.</p><pre><code>python -m pip install -e '.[server]'
+python -m veto.api</code></pre><ol><li>Open <a href="/">the dashboard</a> and choose <strong>Run guided flow</strong>.</li><li>Inspect the invoice match, wrong invoice rejection, matching payout approval, and duplicate rejection.</li><li>Use the metric links, latest result, and audit filters to inspect the recorded reasons and receipt.</li><li>Choose USD in the currency selector to see the active mandate reject an uncovered currency.</li></ol><p>For a clean repeat, start the server with a fresh database path: <code>python -m veto.api --db ./fresh-demo.sqlite3</code>.</p></section>
+
+          <section class="docs-section" id="mandates"><h2>Mandates</h2><p>A mandate is a text policy that describes what an agent may propose. This demo's <code>VetoDemo</code> mandate allows <code>vendor_123</code> to receive INR payouts up to ₹100 over a rolling 24-hour window, after matching invoice evidence is recorded.</p><pre><code>mandate VetoDemo {
+  rule InvoiceGuard {
+    cap payout &lt;= 100 INR per 24h
+    allow_merchant "vendor_123"
+    require invoice_match before payout
+  }
+}</code></pre><p>The grammar also supports USD caps, denied merchants, validity windows, and action sequences. The dashboard shows the loaded mandate under <a href="/#policy">Mandate</a>.</p></section>
+
+          <section class="docs-section" id="static-checks"><h2>Static checks</h2><p>Before a mandate is used, the parser produces typed rules. Fast checks report duplicate rule IDs, conflicting merchant lists, inverted time windows, repeated or shadowed caps, and invalid preconditions. Optional Z3 checks whether action-order rules contain cycles that prevent completion.</p><p>These checks inspect the policy itself. They do not decide whether a particular proposed payout should run; the runtime guard makes that decision using current time and confirmed history.</p></section>
+
+          <section class="docs-section" id="runtime-guard"><h2>Runtime guard</h2><p>VetoGate checks the action type, amount, currency, merchant, validity window, spending cap, invoice ID, and prior confirmed actions. A money-moving action without a matching cap is rejected. The agent cannot supply the trusted clock or invent confirmed history.</p><p>The result includes an approval or rejection reason and, when applicable, a violation code. A rejection is never sent to an executor. Try changing the vendor, amount, invoice, or currency in the <a href="/#workbench">proposal form</a>.</p></section>
+
+          <section class="docs-section" id="invoice-evidence"><h2>Invoice evidence</h2><p>Click <strong>Record invoice match</strong> to add simulated evidence for the current vendor and invoice ID. A payout must refer to a confirmed match for the same vendor and currency. One confirmed invoice ID cannot authorize a second confirmed payout.</p><div class="docs-note"><strong>Demo boundary</strong><span>This control records a match claim for demonstration. Veto does not currently read a document or verify its amount against a trusted invoice source.</span></div></section>
+
+          <section class="docs-section" id="execution"><h2>Execution and replay</h2><p>The pipeline evaluates a proposal, saves an approved pending intent, then calls an executor with a stable idempotency key. The local dashboard uses a simulated executor. Only a confirmed receipt enters confirmed history, and that history update commits with its approved audit entry.</p><p>Repeating the same event ID and action returns the recorded result without executing again. Reusing an event ID for a different action fails. A definite execution failure does not create confirmed history.</p></section>
+
+          <section class="docs-section" id="audit"><h2>Audit trail</h2><p>Every final decision is stored with the action, reason, time, policy fingerprint, and receipt when available. Each entry hashes its content with the previous entry's hash. The dashboard verifies the chain and lets you filter by decision or search event, vendor, and invoice IDs.</p><p>The chain reveals ordinary local edits or deletions. It is not externally anchored or signed, so someone able to rewrite and rehash the entire database could forge a new chain.</p></section>
+
+          <section class="docs-section" id="recovery"><h2>Pending recovery</h2><p>An uncertain external outcome is left pending, not counted as a confirmed payment. The intent survives a restart and blocks unrelated new actions until the same event is retried safely or reconciled against the provider. The <a href="/#pending">Pending</a> panel exposes unresolved local intents.</p><p>The local dashboard has no external provider to reconcile. Automatic provider reconciliation and multi-worker coordination remain future work; the Modern Treasury command has an explicit <code>--reconcile</code> path.</p></section>
+
+          <section class="docs-section" id="currency"><h2>Currencies</h2><p>Actions can use INR or USD, but approval requires a mandate cap in that currency. This workspace has only an INR payout cap. The currency selector lets you submit USD to see the policy reject it; it does not convert money or switch the active mandate. The separate Modern Treasury sandbox demo uses a USD mandate and a different database.</p></section>
+
+          <section class="docs-section" id="providers"><h2>Provider demos</h2><div class="docs-provider-grid"><div><h3>Modern Treasury</h3><p>A separate command previews a guarded USD sandbox payout. With <code>--execute</code>, it uses a sandbox organization and accounts, checks the key's mode, and creates an ACH payment order only after policy approval. Orders that are not completed remain unconfirmed.</p><code>python -m veto.modern_treasury_demo</code></div><div><h3>Razorpay</h3><p>A separate command previews a guarded INR test refund against a captured test payment. Test credentials are read only with <code>--execute</code>. RazorpayX payout support is also implemented and covered by mocked HTTP tests.</p><code>python -m veto.razorpay_refund_demo</code></div></div><p>These provider commands are separate from the browser dashboard. The dashboard never loads their keys or sends provider requests.</p></section>
+
+          <section class="docs-section" id="api"><h2>Local API</h2><p>The dashboard and API share one SQLite database. The HTTP server binds to loopback by default. Use <a href="/docs" target="_blank" rel="noopener noreferrer">the interactive API reference</a> to inspect requests and responses.</p><div class="docs-endpoints"><div><code>GET /api/status</code><span>Counts and audit integrity</span></div><div><code>GET /api/policy</code><span>Active mandate text</span></div><div><code>POST /api/demo/invoice-matches</code><span>Simulated invoice evidence</span></div><div><code>POST /api/proposals</code><span>Evaluated payout proposal</span></div><div><code>GET /api/audit</code><span>Hash-chained decisions</span></div><div><code>GET /api/pending</code><span>Unresolved intents</span></div></div></section>
+          <footer class="page-footer"><span>Veto guide · Local simulation</span><a href="/">Return to dashboard</a></footer>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

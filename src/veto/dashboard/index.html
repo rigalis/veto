@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f8fb">
+    <meta name="description" content="Veto evaluates agent payment proposals against a mandate before execution. Explore decisions and audit evidence in a local simulation.">
+    <title>Veto · Agent payment decisions</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body class="welcome-active">
+    <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="i-grid" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></symbol>
+      <symbol id="i-arrows" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="1.5"/><path d="M2.5 9h19M2.5 15h19"/><circle cx="12" cy="12" r="2.5"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 20 5v6c0 5-3.5 8.6-8 11-4.5-2.4-8-6-8-11V5l8-3Z"/><path d="m8.5 12 2.4 2.4 4.8-5"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m0 0-6-6m6 6-6 6"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 2h7l5 5v15H5V2h2Z"/><path d="M14 2v6h5M8 13h8M8 17h8"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-2.4-1.4-5.1-1.7-9-1v14c3.9-.7 6.6-.4 9 1 2.4-1.4 5.1-1.7 9-1V4c-3.9-.7-6.6-.4-9 1Z"/><path d="M12 5v14"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.3 16.3 4.2 4.2"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 4h7v7M20 4l-9 9M20 14v6H4V4h6"/></symbol>
+    </svg>
+
+    <section class="welcome-screen" id="welcome-screen" role="dialog" aria-modal="true" aria-labelledby="welcome-title" aria-describedby="welcome-description">
+      <div class="welcome-content" id="welcome-content">
+        <div class="welcome-wordmark" aria-label="Veto">veto<span>.</span></div>
+        <p class="welcome-kicker">AGENT PAYMENT GUARD</p>
+        <h1 id="welcome-title">Neurosymbolic guardrails for agentic payments.</h1>
+        <p class="welcome-description" id="welcome-description">Veto compiles readable mandates with Lark, checks policy consistency with SMT, and gates each agent payment proposal before execution.</p>
+        <div class="welcome-capabilities" aria-label="Key capabilities"><span>Lark mandate parser</span><i></i><span>SMT policy checks</span><i></i><span>Pre-execution enforcement</span></div>
+        <div class="welcome-actions"><button class="welcome-enter" id="enter-demo" type="button">Enter demo <svg class="icon"><use href="#i-arrow"/></svg></button><a class="welcome-guide" href="/guide">Read the guide <svg class="icon"><use href="#i-external"/></svg></a></div>
+        <p class="welcome-safety">Local simulation · no payment credentials or real funds</p>
+      </div>
+      <div class="welcome-transition" aria-hidden="true"><span></span></div>
+    </section>
+
+    <div class="app-shell" id="app-shell" inert aria-hidden="true">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-block">
+          <a class="brand" href="#overview" aria-label="Veto home">
+            <span class="brand-name">veto<span class="brand-dot">.</span></span>
+          </a>
+          <span class="brand-caption">agent payment guard</span>
+        </div>
+
+        <div class="workspace-switcher">
+          <button class="workspace-card" id="workspace-toggle" type="button" aria-expanded="false" aria-controls="workspace-menu">
+            <span><strong>Veto workspace</strong><small>Local sandbox · INR mandate</small></span>
+            <svg class="icon workspace-chevron"><use href="#i-chevron"/></svg>
+          </button>
+          <div class="workspace-menu" id="workspace-menu" hidden>
+            <div class="workspace-menu-title">Current workspace</div>
+            <div class="workspace-menu-fact"><span>Execution</span><strong>Simulated</strong></div>
+            <div class="workspace-menu-fact"><span>Mandate</span><strong>VetoDemo</strong></div>
+            <div class="workspace-menu-fact"><span>Storage</span><strong>Local SQLite</strong></div>
+            <div class="workspace-menu-links"><a href="#policy">View mandate</a><a href="#activity">Open audit trail</a><a href="/docs" target="_blank" rel="noopener noreferrer">API reference</a></div>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="Main navigation">
+          <p class="nav-label">WORKSPACE</p>
+          <a class="nav-link active" href="#overview" data-nav="overview"><svg class="icon"><use href="#i-grid"/></svg>Overview</a>
+          <a class="nav-link" href="#workbench" data-nav="workbench"><svg class="icon"><use href="#i-arrows"/></svg>Proposals</a>
+          <a class="nav-link" href="#policy" data-nav="policy"><svg class="icon"><use href="#i-shield"/></svg>Mandate</a>
+          <a class="nav-link" href="#activity" data-nav="activity"><svg class="icon"><use href="#i-list"/></svg>Audit trail</a>
+          <a class="nav-link" href="#pending" data-nav="pending"><svg class="icon"><use href="#i-clock"/></svg>Pending<span class="nav-count" id="nav-pending-count">0</span></a>
+          <p class="nav-label nav-label-secondary">DEVELOPER</p>
+          <a class="nav-link" href="/guide"><svg class="icon"><use href="#i-book"/></svg>Guide</a>
+          <a class="nav-link" href="/docs" target="_blank" rel="noopener noreferrer"><svg class="icon"><use href="#i-file"/></svg>API reference<svg class="icon nav-external"><use href="#i-external"/></svg></a>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="sandbox-note"><span class="sandbox-toggle" aria-hidden="true"><span></span></span><div><strong>Sandbox mode</strong><small>Simulated execution</small></div></div>
+          <div class="sidebar-footer">Veto / local environment</div>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
+            <strong class="topbar-title">Agent decisions</strong>
+          </div>
+          <div class="topbar-right">
+            <label class="topbar-search"><svg class="icon"><use href="#i-search"/></svg><input id="topbar-search" type="search" placeholder="Search audit records" aria-label="Search audit records"></label>
+            <a class="topbar-link" href="/docs" target="_blank" rel="noopener noreferrer">API reference<svg class="icon"><use href="#i-external"/></svg></a>
+            <button class="topbar-refresh" id="refresh-workspace" type="button">Refresh</button>
+          </div>
+          <span class="sr-only" id="connection-label" aria-live="polite">Connecting</span>
+        </header>
+
+        <main class="content">
+          <section class="page-header" id="overview">
+            <div>
+              <h1>Agent payment decisions</h1>
+              <p>Check proposed payouts against a mandate before execution, then inspect every decision.</p>
+            </div>
+            <button class="button button-primary guided-button" type="button" id="guided-demo"><svg class="icon"><use href="#i-arrow"/></svg>Run guided flow</button>
+          </section>
+
+          <div class="environment-banner" role="note">
+            <span class="banner-badge">SANDBOX</span>
+            <div><strong>Local simulation · no provider call</strong><span>Proposals use a simulated executor. Payment credentials and bank accounts are not accessed.</span></div>
+            <a href="/docs" target="_blank" rel="noopener noreferrer">View API <svg class="icon"><use href="#i-arrow"/></svg></a>
+          </div>
+
+          <section class="metric-grid" aria-label="Workspace metrics">
+            <div class="metric-card">
+              <div class="metric-head"><svg class="icon metric-glyph metric-total-icon"><use href="#i-list"/></svg><span>Total decisions</span><button type="button" class="metric-info" aria-label="All decisions recorded in the audit chain">i</button><a class="metric-open" href="#activity" data-metric-filter="all" aria-label="View audit trail"><svg class="icon"><use href="#i-chevron"/></svg></a></div>
+              <strong id="metric-total">0</strong><small>audit entries</small>
+            </div>
+            <div class="metric-card">
+              <div class="metric-head"><svg class="icon metric-glyph metric-approved-icon"><use href="#i-check"/></svg><span>Approved</span><button type="button" class="metric-info" aria-label="Approved actions in the audit chain">i</button><a class="metric-open" href="#activity" data-metric-filter="APPROVED" aria-label="View approved actions"><svg class="icon"><use href="#i-chevron"/></svg></a></div>
+              <strong id="metric-approved">0</strong><small>confirmed actions</small>
+            </div>
+            <div class="metric-card">
+              <div class="metric-head"><svg class="icon metric-glyph metric-blocked-icon"><use href="#i-close"/></svg><span>Blocked</span><button type="button" class="metric-info" aria-label="Proposals rejected by policy">i</button><a class="metric-open" href="#activity" data-metric-filter="REJECTED" aria-label="View blocked proposals"><svg class="icon"><use href="#i-chevron"/></svg></a></div>
+              <strong id="metric-blocked">0</strong><small>policy rejections</small>
+            </div>
+            <div class="metric-card">
+              <div class="metric-head"><svg class="icon metric-glyph metric-pending-icon"><use href="#i-clock"/></svg><span>Pending</span><button type="button" class="metric-info" aria-label="Approved intents awaiting reconciliation">i</button><a class="metric-open" href="#pending" aria-label="View pending intents"><svg class="icon"><use href="#i-chevron"/></svg></a></div>
+              <strong id="metric-pending">0</strong><small>open intents</small>
+            </div>
+          </section>
+
+          <div class="dashboard-grid">
+            <div class="primary-stack">
+            <section class="panel workbench-panel" id="workbench" aria-labelledby="workbench-title">
+              <div class="panel-heading"><div><div class="panel-kicker">PROPOSAL WORKBENCH</div><h2 id="workbench-title">Test a payment</h2><p>Submit a payout and see exactly how Veto evaluates it.</p></div><span class="panel-tag">LIVE PIPELINE</span></div>
+
+              <div class="flow-strip" aria-label="Decision flow"><span><b>1</b> Invoice evidence</span><i></i><span><b>2</b> Agent proposal</span><i></i><span><b>3</b> Policy decision</span></div>
+
+              <div class="scenario-section"><div class="field-topline"><strong>Try a scenario</strong><span>Fills the proposal form</span></div><div class="scenario-pills" role="group" aria-label="Example scenarios"><button type="button" class="scenario-pill selected" data-scenario="valid">Valid payout</button><button type="button" class="scenario-pill" data-scenario="wrong">Wrong invoice</button><button type="button" class="scenario-pill" data-scenario="over">Over cap</button><button type="button" class="scenario-pill" data-scenario="duplicate">Duplicate invoice</button></div></div>
+
+              <form id="proposal-form" class="proposal-form">
+                <div class="form-grid"><label class="field"><span>Vendor</span><input id="merchant-input" name="merchant" value="vendor_123" autocomplete="off" required><small>Must be permitted by the mandate</small></label><label class="field"><span>Invoice ID</span><input id="invoice-input" name="invoice_id" value="INV-001" autocomplete="off" spellcheck="false" required><small>Must match recorded invoice evidence</small></label></div>
+                <div class="form-grid form-grid-second"><label class="field"><span>Amount</span><span class="amount-control"><span id="amount-symbol">₹</span><input id="amount-input" name="amount" type="number" min="0.01" step="0.01" value="40.00" required></span><small id="amount-limit">Maximum ₹100 per 24 hours</small></label><label class="field"><span>Currency</span><select id="currency-input" name="currency"><option value="INR">INR · Indian rupee</option><option value="USD">USD · US dollar</option></select><small id="currency-note">INR payouts can be approved by this mandate</small></label></div>
+                <div class="form-actions"><button type="button" class="button button-secondary" id="verify-invoice"><svg class="icon"><use href="#i-file"/></svg>Record invoice match</button><button type="submit" class="button button-primary" id="submit-proposal">Submit proposal<svg class="icon"><use href="#i-arrow"/></svg></button></div>
+              </form>
+              <p class="workbench-note"><svg class="icon"><use href="#i-shield"/></svg>Invoice matches here are simulated evidence for the demo, not document verification.</p>
+              <div class="guided-progress" id="guided-progress" hidden><div class="guided-progress-head"><strong>Guided flow</strong><span id="guided-progress-status">Preparing</span></div><ol id="guided-progress-list"></ol></div>
+            </section>
+
+            <section class="panel activity-panel" id="activity" aria-labelledby="activity-title"><div class="panel-heading activity-heading"><div><div class="panel-kicker">TRACEABILITY</div><h2 id="activity-title">Activity &amp; audit</h2><p>Every proposal leaves an inspectable decision.</p></div><span class="audit-integrity" id="audit-integrity"><svg class="icon"><use href="#i-check"/></svg>Chain verified</span></div><div class="table-toolbar"><div class="filter-group" role="group" aria-label="Filter decisions"><button class="filter-button active" type="button" data-filter="all">All</button><button class="filter-button" type="button" data-filter="APPROVED">Approved</button><button class="filter-button" type="button" data-filter="REJECTED">Blocked</button></div><label class="table-search"><svg class="icon"><use href="#i-search"/></svg><input id="audit-search" type="search" placeholder="Search event or invoice" aria-label="Search event or invoice"></label></div><div class="table-scroll"><table><thead><tr><th>EVENT</th><th>TYPE</th><th>INVOICE</th><th>AMOUNT</th><th>DECISION</th><th>TIME</th></tr></thead><tbody id="audit-rows"><tr><td colspan="6" class="table-empty">No decisions recorded yet. Run a scenario to start the audit trail.</td></tr></tbody></table></div><div class="table-footer"><span id="audit-count-label">0 decisions</span><span>Hash chained audit log</span></div></section>
+            </div>
+            <div class="secondary-stack">
+              <section class="panel decision-panel" aria-labelledby="decision-title"><div class="panel-heading decision-heading"><div><div class="panel-kicker">DECISION DETAIL</div><h2 id="decision-title">Latest result</h2></div><span class="decision-reference" id="decision-reference">—</span></div><div class="decision-empty" id="decision-empty"><h3>Ready for a proposal</h3><p>Submit a payout or run the guided flow to see the policy decision here.</p></div><div class="decision-body" id="decision-body" hidden><div class="decision-status-row"><span class="status-badge" id="decision-badge">—</span><span class="decision-time" id="decision-time">—</span></div><h3 id="decision-headline">—</h3><p class="decision-reason" id="decision-reason">—</p><div class="rule-checks" id="rule-checks"><div class="rule-check"><span class="check-icon" id="check-vendor">·</span><span>Vendor allowlist</span><small id="check-vendor-label">—</small></div><div class="rule-check"><span class="check-icon" id="check-cap">·</span><span>₹100 spending cap</span><small id="check-cap-label">—</small></div><div class="rule-check"><span class="check-icon" id="check-invoice">·</span><span>Invoice match</span><small id="check-invoice-label">—</small></div></div><dl class="decision-meta"><div><dt>Event ID</dt><dd id="decision-event">—</dd></div><div><dt>Audit entry</dt><dd id="decision-audit">—</dd></div><div><dt>Receipt</dt><dd id="decision-receipt">—</dd></div></dl></div></section>
+              <section class="panel mandate-panel" id="policy" aria-labelledby="policy-title">
+                <div class="panel-heading"><h2 id="policy-title">Mandate</h2></div>
+                <div class="mandate-name" id="mandate-name">VetoDemo</div>
+                <div class="mandate-facts"><div>Payout cap <strong>₹100 / 24h</strong></div><div>Vendor <strong>vendor_123</strong></div><div>Requires <strong>invoice match</strong></div></div>
+                <div class="mandate-usage"><div class="usage-heading"><span>Confirmed spend · last 24h</span><strong id="mandate-spend">₹0.00</strong></div><div class="usage-track"><span id="mandate-progress"></span></div><small>Against the ₹100.00 rolling payout cap</small></div>
+                <div class="mandate-operations"><div><span>Execution mode</span><strong>Simulated</strong></div><div><span>Confirmed actions</span><strong id="mandate-confirmed">0</strong></div><div><span>Audit integrity</span><strong id="mandate-integrity">Checking</strong></div></div>
+                <details class="mandate-code"><summary>View mandate source <svg class="icon"><use href="#i-chevron"/></svg></summary><pre id="mandate-source"></pre></details>
+              </section>
+              <section class="panel pending-panel" id="pending" aria-labelledby="pending-title"><div class="panel-heading"><div><div class="panel-kicker">RECOVERY QUEUE</div><h2 id="pending-title">Pending intents</h2></div><span class="pending-count" id="pending-count-badge">0</span></div><div id="pending-list" class="pending-list"><div class="pending-empty"><svg class="icon"><use href="#i-check"/></svg><span>All clear. No unresolved intents.</span></div></div></section>
+            </div>
+          </div>
+          <footer class="page-footer"><span>Veto demo workspace · Simulated execution</span><span>Local API and audit records</span></footer>
+        </main>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

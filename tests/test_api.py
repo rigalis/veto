@@ -37,8 +37,15 @@ def _payout(event_id, invoice_id=None, amount="40.00"):
 def test_api_demonstrates_invoice_guard_replay_and_audit(tmp_path):
     app = create_app(tmp_path / "demo.sqlite3")
     home = _request(app, "GET", "/")
-    assert home.status_code == 307
-    assert home.headers["location"] == "/docs"
+    assert home.status_code == 200
+    assert "Veto" in home.text
+    guide = _request(app, "GET", "/guide")
+    assert guide.status_code == 200
+    assert "Pending recovery" in guide.text
+    assert 'href="#currency"' in guide.text
+    assert _request(app, "GET", "/assets/styles.css").status_code == 200
+    assert _request(app, "GET", "/assets/app.js").status_code == 200
+    assert _request(app, "GET", "/assets/guide.js").status_code == 200
     assert _request(app, "GET", "/favicon.ico").status_code == 204
     assert _request(app, "GET", "/api/status").json() == {
         "mode": "simulated", "confirmed_count": 0, "pending_count": 0,
@@ -90,6 +97,17 @@ def test_api_rejects_wrong_action_and_conflicting_event(tmp_path):
     assert conflict.status_code == 409
     malformed = _request(app, "POST", "/api/proposals", json=_payout("bad-id", "bad invoice"))
     assert malformed.status_code == 422
+
+
+def test_local_mandate_blocks_usd_payouts(tmp_path):
+    app = create_app(tmp_path / "demo.sqlite3")
+    proposal = _payout("usd-proposal", "INV-USD")
+    proposal["action"]["currency"] = "USD"
+    result = _request(app, "POST", "/api/proposals", json=proposal)
+    assert result.status_code == 200
+    assert result.json()["decision"] == "REJECTED"
+    assert result.json()["code"] == "unconstrained_money_action"
+    assert _request(app, "GET", "/api/status").json()["confirmed_count"] == 0
 
 
 def test_api_shows_unresolved_local_intents(tmp_path):

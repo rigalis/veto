@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from veto.audit import AuditEventConflictError, AuditIntegrityError, AuditLog
@@ -27,6 +26,7 @@ DEMO_MANDATE = '''mandate VetoDemo {
   }
 }'''
 DEFAULT_DB = Path("data/veto-api-demo.sqlite3")
+_DASHBOARD_DIR = Path(__file__).with_name("dashboard")
 
 
 class _Request(BaseModel):
@@ -95,8 +95,33 @@ def create_app(database: Path = DEFAULT_DB) -> FastAPI:
     app = FastAPI(title="Veto Demo API", version="0.1.0")
 
     @app.get("/", include_in_schema=False)
-    async def home() -> RedirectResponse:
-        return RedirectResponse(url="/docs", status_code=307)
+    async def home() -> Response:
+        return Response(
+            content=(_DASHBOARD_DIR / "index.html").read_text(encoding="utf-8"),
+            media_type="text/html",
+        )
+
+    @app.get("/guide", include_in_schema=False)
+    async def guide() -> Response:
+        return Response(
+            content=(_DASHBOARD_DIR / "guide.html").read_text(encoding="utf-8"),
+            media_type="text/html",
+        )
+
+    @app.get("/assets/{asset_name}", include_in_schema=False)
+    async def dashboard_asset(asset_name: str) -> Response:
+        media_types = {
+            "styles.css": "text/css",
+            "app.js": "text/javascript",
+            "guide.js": "text/javascript",
+            "favicon.svg": "image/svg+xml",
+        }
+        if asset_name not in media_types:
+            raise HTTPException(status_code=404, detail="asset not found")
+        return Response(
+            content=(_DASHBOARD_DIR / asset_name).read_bytes(),
+            media_type=media_types[asset_name],
+        )
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon() -> Response:
