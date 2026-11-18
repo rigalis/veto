@@ -24,8 +24,8 @@ Test-mode provider adapters for Razorpay and Modern Treasury are also in place.
 The Python package, mandate grammar, example policies, parser, typed models,
 policy loader, both tiers of static checks, and VetoGate's policy checks are
 in place. VetoGate evaluates merchant rules, spending caps, validity windows,
-preconditions, invoice IDs, and action order using confirmed action history. A SQLite store
-now preserves that history across plans and restarts. A separate hash-chained
+preconditions, invoice IDs, and action order using confirmed action history.
+A SQLite store now preserves that history and pending intents across restarts. A separate hash-chained
 audit log is also in place. The payment pipeline connects the guard, a
 pluggable executor, confirmed history, and audit records. A simulated executor
 and command-line demo exercise that path. RazorpayX payout, Razorpay Payments
@@ -166,11 +166,13 @@ approved audit entry commit in the same local SQLite transaction.
 ## Payment pipeline
 
 The [pipeline](src/veto/pipeline.py) checks a proposal against confirmed
-history, calls a supplied executor only for approved proposals, then records
-the result. The executor receives a stable idempotency key derived from the
+history, saves an approved pending intent, calls a supplied executor, then
+records the result. The intent is committed before the external call. The
+executor receives a stable idempotency key derived from the
 policy and event id. Replaying an already recorded event returns its original
 result without calling the executor again. Rejections and definite execution
-failures receive audit entries but never enter confirmed history.
+failures receive audit entries but never enter confirmed history. Definite
+failures clear the pending intent; uncertain outcomes leave it for recovery.
 
 The current demo uses a simulated executor. No payment provider or credentials
 are needed. The executor must honor the idempotency key and return a receipt
@@ -180,11 +182,12 @@ confirmed history. Resolve that event with the provider before making another
 payment; retrying it requires the same event id and an idempotent executor.
 
 The local database transaction serializes pipeline calls and commits confirmed
-history with the audit record. It cannot roll back an external payout. If the
-process stops after a provider succeeds but before the local commit, Veto may
-have no record of that payout. The pipeline therefore does not yet provide
-safe live-money recovery or multi-worker operation. A durable pending state,
-automatic provider reconciliation, and trusted invoice verification are still needed.
+history with the audit record. A pending intent blocks new actions until the
+same event is retried or reconciled. If the process stops after a provider
+succeeds but before the local commit, the intent survives and can be checked
+against the provider. Veto still cannot roll back external effects or claim
+production-safe live-money recovery. Automatic provider reconciliation,
+multi-worker coordination, and trusted invoice verification remain future work.
 
 ## Run the simulated demo
 
@@ -376,10 +379,17 @@ without creating another one:
 python -m veto.modern_treasury_demo --reconcile
 ```
 
+To inspect unresolved local intents without keys or network access:
+
+```bash
+python -m veto.modern_treasury_demo --pending
+```
+
 Keep the same `--event-id`, `--amount`, database, and account mapping as the
 original execution. Reconciliation makes only GET requests and records a
 matching completed order in confirmed history and the audit log. A pending
-order remains unconfirmed. A successful replay reads the local receipt
+order remains unconfirmed and its intent stays visible through `--pending`.
+A successful replay reads the local receipt
 without another provider request. Use a new `--event-id` only for a separate
 sandbox payout after reconciliation.
 

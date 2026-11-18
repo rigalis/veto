@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from veto.models import ExecutedAction, PaymentAction
@@ -10,6 +12,81 @@ from veto.models import ExecutedAction, PaymentAction
 
 class HistoryConflictError(ValueError):
     """An event id was reused for a different confirmed action."""
+
+
+@dataclass(frozen=True, slots=True)
+class PendingIntent:
+    event_id: str
+    action: PaymentAction
+    policy_hash: str
+    idempotency_key: str
+    approved_at: datetime
+    reason: str
+    rule_id: str | None
+
+
+class PendingStore:
+    """Approved intents persisted before external execution."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.path) as db:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pending_actions (
+                    event_id TEXT PRIMARY KEY,
+                    action_json TEXT NOT NULL,
+                    policy_hash TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    approved_at TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    rule_id TEXT
+                )
+                """
+            )
+
+    @staticmethod
+    def _find_connection(db: sqlite3.Connection, event_id: str) -> PendingIntent | None:
+        row = db.execute(
+            "SELECT event_id, action_json, policy_hash, idempotency_key, approved_at, reason, rule_id "
+            "FROM pending_actions WHERE event_id = ?", (event_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return PendingIntent(
+            row[0], PaymentAction.model_validate_json(row[1]), row[2], row[3],
+            datetime.fromisoformat(row[4]), row[5], row[6],
+        )
+
+    @staticmethod
+    def _other_connection(db: sqlite3.Connection, event_id: str) -> str | None:
+        row = db.execute(
+            "SELECT event_id FROM pending_actions WHERE event_id != ? LIMIT 1", (event_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+    @staticmethod
+    def _record_connection(db: sqlite3.Connection, intent: PendingIntent) -> None:
+        db.execute(
+            "INSERT INTO pending_actions "
+            "(event_id, action_json, policy_hash, idempotency_key, approved_at, reason, rule_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                intent.event_id, intent.action.model_dump_json(), intent.policy_hash,
+                intent.idempotency_key, intent.approved_at.isoformat(), intent.reason,
+                intent.rule_id,
+            ),
+        )
+
+    @staticmethod
+    def _delete_connection(db: sqlite3.Connection, event_id: str) -> None:
+        db.execute("DELETE FROM pending_actions WHERE event_id = ?", (event_id,))
+
+    def entries(self) -> tuple[PendingIntent, ...]:
+        with sqlite3.connect(self.path) as db:
+            ids = [row[0] for row in db.execute("SELECT event_id FROM pending_actions ORDER BY approved_at")]
+            return tuple(self._find_connection(db, event_id) for event_id in ids)
 
 
 class HistoryStore:

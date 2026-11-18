@@ -1,6 +1,7 @@
 """The sandbox command previews safely and uses explicit execution settings."""
 
 import json
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -116,6 +117,8 @@ def test_reconcile_missing_order_never_submits_one(tmp_path, monkeypatch):
     )
     assert "no payment order found" in result
     assert [request.method for request in requests] == ["GET", "GET"]
+    from veto.state import PendingStore
+    assert PendingStore(tmp_path / "demo.sqlite3").entries() == ()
 
 
 def test_uncertain_execution_can_be_confirmed_later_without_second_post(tmp_path, monkeypatch):
@@ -208,3 +211,36 @@ def test_main_returns_failure_status_for_unresolved_order(tmp_path, monkeypatch,
         main(["--execute", "--db", str(tmp_path / "demo.sqlite3")])
     assert exc.value.code == 2
     assert "UNCERTAIN" in capsys.readouterr().out
+
+
+def test_pending_command_reads_local_intents_without_keys(tmp_path, monkeypatch, capsys):
+    for name in (
+        "MODERN_TREASURY_ORG_ID", "MODERN_TREASURY_API_KEY",
+        "MODERN_TREASURY_INTERNAL_ACCOUNT_ID", "MODERN_TREASURY_RECIPIENT_ACCOUNT_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    database = tmp_path / "demo.sqlite3"
+    main(["--pending", "--db", str(database)])
+    assert capsys.readouterr().out.strip() == "pending: none"
+
+    from veto.audit import AuditLog
+    from veto.models import PaymentAction
+    from veto.pipeline import ExecutionUncertainError, PaymentPipeline
+    from veto.policy_loader import load_policy
+    from veto.state import HistoryStore
+    from veto.modern_treasury_demo import DEMO_MANDATE
+
+    def uncertain(action, *, idempotency_key):
+        raise ExecutionUncertainError("pending")
+
+    pipeline = PaymentPipeline(
+        load_policy(DEMO_MANDATE), AuditLog(database), HistoryStore(database),
+        uncertain,
+    )
+    with pytest.raises(ExecutionUncertainError):
+        pipeline.run(
+            PaymentAction(type="payout", amount="1.00", currency="USD", merchant="demo_vendor"),
+            event_id="demo-1", now=datetime.now(timezone.utc),
+        )
+    main(["--pending", "--db", str(database)])
+    assert "pending: demo-1 | 1.00 USD | demo_vendor" in capsys.readouterr().out

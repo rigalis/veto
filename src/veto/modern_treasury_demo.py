@@ -15,7 +15,7 @@ from veto.models import PaymentAction
 from veto.modern_treasury import ModernTreasurySandboxExecutor
 from veto.pipeline import ExecutionUncertainError, PaymentPipeline
 from veto.policy_loader import load_policy
-from veto.state import HistoryStore
+from veto.state import HistoryStore, PendingStore
 from veto.vetogate import VetoGate
 
 
@@ -71,7 +71,7 @@ def run_demo(
     )
     pipeline = PaymentPipeline(policy, audit, history, executor.reconcile if reconcile else executor)
     try:
-        result = pipeline.run(action, event_id=event_id, now=now)
+        result = pipeline.run(action, event_id=event_id, now=now, reconcile_only=reconcile)
     except ExecutionUncertainError as exc:
         instruction = "run --reconcile again later" if reconcile else "run --reconcile with the same event id and amount"
         return f"UNCERTAIN | {exc} | {instruction}"
@@ -88,7 +88,19 @@ def main(argv: list[str] | None = None) -> None:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--execute", action="store_true", help="submit a Modern Treasury sandbox payout")
     mode.add_argument("--reconcile", action="store_true", help="check an existing sandbox order without submitting one")
+    mode.add_argument("--pending", action="store_true", help="show unresolved local payout intents without an API call")
     args = parser.parse_args(argv)
+    if args.pending:
+        intents = PendingStore(args.db).entries()
+        if not intents:
+            print("pending: none")
+        else:
+            for intent in intents:
+                print(
+                    f"pending: {intent.event_id} | {intent.action.amount:.2f} "
+                    f"{intent.action.currency} | {intent.action.merchant}"
+                )
+        return
     if args.execute or args.reconcile:
         load_dotenv(Path.cwd() / ".env", override=False)
     try:

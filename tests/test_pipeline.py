@@ -16,7 +16,7 @@ from veto.pipeline import (
     PaymentPipeline,
 )
 from veto.policy_loader import load_policy
-from veto.state import HistoryStore
+from veto.state import HistoryStore, PendingStore
 
 
 NOW = datetime(2026, 11, 17, 12, tzinfo=timezone.utc)
@@ -84,6 +84,7 @@ def test_definite_execution_failure_is_audited_without_state(tmp_path):
     assert result.decision == "EXEC_ERROR"
     assert "provider declined" in result.audit_record.event.reason
     assert history.confirmed() == ()
+    assert PendingStore(audit.path).entries() == ()
     assert audit.verify_chain().ok
 
 
@@ -101,8 +102,42 @@ def test_uncertain_execution_can_retry_with_same_key(tmp_path):
         pipeline.run(_action(), event_id="retry-1", now=NOW)
     assert audit.entries() == ()
     assert history.confirmed() == ()
+    assert [intent.event_id for intent in PendingStore(audit.path).entries()] == ["retry-1"]
     assert pipeline.run(_action(), event_id="retry-1", now=NOW).decision == "APPROVED"
     assert keys[0] == keys[1]
+    assert PendingStore(audit.path).entries() == ()
+
+
+def test_crash_preserves_intent_and_reconciliation_recovers_after_restart(tmp_path):
+    path = tmp_path / "veto.sqlite3"
+    seen = []
+
+    def interrupted(action, *, idempotency_key):
+        intents = PendingStore(path).entries()
+        seen.append((idempotency_key, intents[0].event_id))
+        raise SystemExit("simulated process exit")
+
+    pipeline, audit, history = _pipeline(tmp_path, interrupted)
+    with pytest.raises(SystemExit, match="simulated process exit"):
+        pipeline.run(_action(), event_id="crash-1", now=NOW)
+    assert seen[0][1] == "crash-1"
+    assert audit.entries() == history.confirmed() == ()
+    assert len(PendingStore(path).entries()) == 1
+
+    def recovered(action, *, idempotency_key):
+        assert idempotency_key == seen[0][0]
+        return ExecutionReceipt("receipt-1", "completed", True)
+
+    reopened = PaymentPipeline(POLICY, AuditLog(path), HistoryStore(path), recovered)
+    with pytest.raises(ExecutionUncertainError, match="pending event"):
+        reopened.run(_action("10"), event_id="new-1", now=NOW + timedelta(seconds=1))
+    result = reopened.run(
+        _action(), event_id="crash-1", now=NOW + timedelta(seconds=1), reconcile_only=True
+    )
+    assert result.decision == "APPROVED"
+    assert PendingStore(path).entries() == ()
+    assert len(HistoryStore(path).confirmed()) == len(AuditLog(path).entries()) == 1
+    assert AuditLog(path).verify_chain().ok
 
 
 def test_executor_uncertainty_detail_reaches_caller_without_audit(tmp_path):
@@ -176,6 +211,7 @@ def test_local_history_and_audit_write_roll_back_together(tmp_path, monkeypatch)
         pipeline.run(_action(), event_id="event-1", now=NOW)
     assert history.confirmed() == ()
     assert audit.entries() == ()
+    assert [intent.event_id for intent in PendingStore(audit.path).entries()] == ["event-1"]
 
 
 def test_broken_audit_chain_stops_execution(tmp_path):
