@@ -12,8 +12,24 @@ enforces the resulting rules against each proposal.
 
 [Open the dashboard](#start-the-simulated-demo) ·
 [Read the in-app guide](#in-app-guide) ·
-[See how proposals are handled](#how-a-proposal-is-handled) ·
+[See the technical architecture](#technical-architecture) ·
 [Explore the API endpoints](#api-endpoints)
+
+## Host a public demo
+
+Deploy this repository to Render with the included blueprint:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rigalis/veto)
+
+Render will ask you to connect your GitHub account and create the `veto-demo`
+web service. When the deployment finishes, open its `onrender.com` URL. The
+dashboard is at `/`, the feature guide at `/guide`, and the API reference at
+`/docs`. The service uses the simulated executor only; it does not need or load
+payment-provider credentials and cannot send real payments.
+
+The free service may take about a minute to wake after inactivity, and its
+local SQLite data can reset when Render restarts, sleeps, or redeploys it. This
+setup is intended for a jury demo, not production or durable shared state.
 
 ## See Veto
 

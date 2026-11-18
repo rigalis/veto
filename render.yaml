@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: veto-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install ".[server]"
+    startCommand: uvicorn veto.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/status
+    autoDeploy: true
