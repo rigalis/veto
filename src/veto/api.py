@@ -7,12 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from veto.audit import AuditEventConflictError, AuditIntegrityError, AuditLog
+from veto.invoices import DemoInvoiceCatalog
 from veto.models import PaymentAction
 from veto.pipeline import ExecutionUncertainError, PaymentPipeline, PipelineResult
+from veto.modern_treasury_webhook import ModernTreasuryWebhookReceiver
 from veto.policy_loader import load_policy
 from veto.simulated import SimulatedExecutor
 from veto.state import HistoryStore, PendingStore
@@ -91,8 +93,12 @@ def create_app(database: Path = DEFAULT_DB) -> FastAPI:
     audit = AuditLog(database)
     history = HistoryStore(database)
     pending = PendingStore(database)
-    pipeline = PaymentPipeline(policy, audit, history, SimulatedExecutor())
+    invoices = DemoInvoiceCatalog()
+    pipeline = PaymentPipeline(
+        policy, audit, history, SimulatedExecutor(), invoice_validator=invoices.validate_action
+    )
     app = FastAPI(title="Veto Demo API", version="0.1.0")
+    webhook_receiver: ModernTreasuryWebhookReceiver | None = None
 
     @app.get("/", include_in_schema=False)
     async def home() -> Response:
@@ -161,11 +167,56 @@ def create_app(database: Path = DEFAULT_DB) -> FastAPI:
 
     @app.post("/api/demo/invoice-matches", response_model=DecisionResponse)
     async def demo_invoice_match(request: DemoInvoiceRequest) -> DecisionResponse:
+        invoice = invoices.get(request.invoice_id)
         action = PaymentAction(
             type="invoice_match", amount="0.00", currency="INR",
             merchant=request.merchant, invoice_id=request.invoice_id,
+            invoice_total=invoice.amount if invoice else None,
         )
         return submit(action, request.event_id)
+
+    @app.get("/api/demo/invoices/next")
+    async def next_demo_invoice() -> dict:
+        matched = {
+            record.event.action.invoice_id
+            for record in audit.entries()
+            if record.event.decision == "APPROVED"
+            and record.event.action.type == "invoice_match"
+            and record.event.action.invoice_id
+        }
+        invoice = invoices.next_unmatched(matched)
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="no unmatched demo invoices remain")
+        return {
+            "invoice_id": invoice.invoice_id,
+            "merchant": invoice.merchant,
+            "amount": f"{invoice.amount:.2f}",
+            "currency": invoice.currency,
+            "source": invoice.source,
+        }
+
+    @app.post("/webhooks/modern-treasury")
+    async def modern_treasury_webhook(request: Request) -> dict[str, str | bool]:
+        nonlocal webhook_receiver
+        if webhook_receiver is None:
+            from dotenv import load_dotenv
+
+            load_dotenv(Path.cwd() / ".env", override=False)
+            try:
+                webhook_receiver = ModernTreasuryWebhookReceiver(database)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=404, detail="sandbox webhook is not configured") from exc
+        try:
+            body = await request.body()
+            if len(body) > 1_000_000:
+                raise HTTPException(status_code=413, detail="webhook body is too large")
+            return webhook_receiver.receive(body, dict(request.headers))
+        except PermissionError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ExecutionUncertainError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/audit")
     async def get_audit() -> dict:

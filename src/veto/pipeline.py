@@ -37,6 +37,7 @@ class ExecutionUncertainError(RuntimeError):
 
 
 Executor = Callable[..., ExecutionReceipt]
+InvoiceValidator = Callable[[PaymentAction], tuple[str, str] | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,7 @@ class PaymentPipeline:
         audit: AuditLog,
         history: HistoryStore,
         executor: Executor,
+        invoice_validator: InvoiceValidator | None = None,
     ) -> None:
         if audit.path.resolve() != history.path.resolve():
             raise ValueError("audit and confirmed history must share one SQLite database")
@@ -76,6 +78,7 @@ class PaymentPipeline:
         self.history = history
         self.pending = PendingStore(audit.path)
         self.executor = executor
+        self.invoice_validator = invoice_validator
         self.policy_hash = policy_fingerprint(policy)
 
     @staticmethod
@@ -135,6 +138,14 @@ class PaymentPipeline:
 
             confirmed = HistoryStore._confirmed_connection(db)
             verdict = self.gate.evaluate(action, now=current_time, executed=confirmed)
+            invoice_issue = (
+                self.invoice_validator(action)
+                if verdict.approved and self.invoice_validator
+                else None
+            )
+            if invoice_issue is not None:
+                code, reason = invoice_issue
+                verdict = Verdict(False, code, reason)
             if not verdict.approved:
                 event = AuditEvent(
                     event_id=event_id,

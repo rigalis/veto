@@ -86,6 +86,17 @@ def test_amount_and_timestamp_roundtrip_without_float_conversion(tmp_path):
     assert restored.executed_at == NOW
 
 
+def test_trusted_invoice_total_roundtrips_in_confirmed_history(tmp_path):
+    store = HistoryStore(tmp_path / "invoice-total.sqlite3")
+    action = PaymentAction(
+        type="invoice_match", amount="0", currency="INR", merchant="vendor_123",
+        invoice_id="INV-001", invoice_total="40.00",
+    )
+    store.record_confirmed("invoice-1", ExecutedAction(action=action, executed_at=NOW))
+    restored = HistoryStore(store.path).confirmed()[0].action
+    assert restored.invoice_total == Decimal("40.00")
+
+
 def test_blank_event_id_is_rejected(tmp_path):
     store = HistoryStore(tmp_path / "state.sqlite3")
     with pytest.raises(ValueError, match="cannot be blank"):

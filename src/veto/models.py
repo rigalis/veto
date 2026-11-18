@@ -110,6 +110,7 @@ class PaymentAction(_StrictModel):
     merchant: str = Field(min_length=1)
     payment_id: str | None = None
     invoice_id: str | None = None
+    invoice_total: Decimal | None = None
 
     @field_validator("amount", mode="before")
     @classmethod
@@ -137,6 +138,16 @@ class PaymentAction(_StrictModel):
             raise ValueError("invoice id must be a nonblank identifier")
         return value
 
+    @field_validator("invoice_total", mode="before")
+    @classmethod
+    def validate_invoice_total(cls, value: object) -> Decimal | None:
+        if value is None:
+            return None
+        amount = _money(value)
+        if amount <= 0:
+            raise ValueError("invoice total must be positive")
+        return amount
+
     @model_validator(mode="after")
     def validate_action_amount(self) -> PaymentAction:
         if self.type == "invoice_match" and self.amount != 0:
@@ -147,6 +158,10 @@ class PaymentAction(_StrictModel):
             raise ValueError("only refund actions can reference a payment id")
         if self.type not in {"payout", "invoice_match"} and self.invoice_id is not None:
             raise ValueError("only payouts and invoice matches can reference an invoice id")
+        if self.type != "invoice_match" and self.invoice_total is not None:
+            raise ValueError("only invoice_match actions can carry an invoice total")
+        if self.invoice_total is not None and self.invoice_id is None:
+            raise ValueError("an invoice total requires an invoice id")
         return self
 
 

@@ -41,6 +41,7 @@ def run_demo(database: Path) -> None:
         action = PaymentAction(
             type=action_type, amount=amount, currency="INR",
             merchant="vendor_123", invoice_id=invoice_id,
+            invoice_total="40.00" if action_type == "invoice_match" else None,
         )
         result = pipeline.run(action, event_id=event_id, now=now)
         replay = " | replayed" if result.replayed else ""

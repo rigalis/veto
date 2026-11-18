@@ -61,8 +61,11 @@ def test_api_demonstrates_invoice_guard_replay_and_audit(tmp_path):
         "event_id": "invoice-1", "invoice_id": "INV-001",
     })
     assert verified.json()["decision"] == "APPROVED"
+    assert _request(app, "GET", "/api/demo/invoices/next").json()["invoice_id"] == "INV-002"
     wrong = _request(app, "POST", "/api/proposals", json=_payout("wrong", "INV-002"))
     assert wrong.json()["code"] == "missing_precondition"
+    mismatch = _request(app, "POST", "/api/proposals", json=_payout("mismatch", "INV-001", "41.00"))
+    assert mismatch.json()["code"] == "invoice_amount_mismatch"
     approved = _request(app, "POST", "/api/proposals", json=_payout("payout-1", "INV-001"))
     assert approved.json()["decision"] == "APPROVED"
     assert approved.json()["receipt_id"].startswith("sim_")
@@ -75,11 +78,11 @@ def test_api_demonstrates_invoice_guard_replay_and_audit(tmp_path):
     audit = _request(app, "GET", "/api/audit").json()
     assert audit["valid"] is True
     assert [item["event"]["decision"] for item in audit["entries"]] == [
-        "REJECTED", "APPROVED", "REJECTED", "APPROVED", "REJECTED",
+        "REJECTED", "APPROVED", "REJECTED", "REJECTED", "APPROVED", "REJECTED",
     ]
     status = _request(app, "GET", "/api/status").json()
     assert status["confirmed_count"] == 2
-    assert status["audit_count"] == 5
+    assert status["audit_count"] == 6
     assert _request(app, "GET", "/api/pending").json() == {"entries": []}
 
 
@@ -97,6 +100,22 @@ def test_api_rejects_wrong_action_and_conflicting_event(tmp_path):
     assert conflict.status_code == 409
     malformed = _request(app, "POST", "/api/proposals", json=_payout("bad-id", "bad invoice"))
     assert malformed.status_code == 422
+
+
+def test_api_only_records_catalog_invoices_for_matching_vendor(tmp_path):
+    app = create_app(tmp_path / "demo.sqlite3")
+    unknown = _request(app, "POST", "/api/demo/invoice-matches", json={
+        "event_id": "unknown", "invoice_id": "INV-UNKNOWN",
+    })
+    assert unknown.json()["decision"] == "REJECTED"
+    assert unknown.json()["code"] == "untrusted_invoice"
+
+    wrong_vendor = _request(app, "POST", "/api/demo/invoice-matches", json={
+        "event_id": "wrong-vendor", "invoice_id": "INV-001", "merchant": "vendor_456",
+    })
+    assert wrong_vendor.json()["decision"] == "REJECTED"
+    assert wrong_vendor.json()["code"] == "merchant_not_allowed"
+    assert _request(app, "GET", "/api/status").json()["confirmed_count"] == 0
 
 
 def test_local_mandate_blocks_usd_payouts(tmp_path):

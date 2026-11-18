@@ -74,7 +74,7 @@ function text(id, value) { byId(id).textContent = value; }
 function syncCurrency() {
   const usd = ui.currency.value === "USD";
   text("amount-symbol", usd ? "$" : "₹");
-  text("amount-limit", usd ? "No USD payout cap in the active mandate" : "Maximum ₹100 per 24 hours");
+  text("amount-limit", usd ? "No USD payout cap in the active mandate" : "Must match invoice total · maximum ₹100 per 24 hours");
   text("currency-note", usd ? "USD proposals are evaluated and blocked by this mandate" : "INR payouts can be approved by this mandate");
   ui.verify.disabled = state.busy || usd;
 }
@@ -306,8 +306,9 @@ async function manualSubmit(e) {
   setBusy(true);
   try {
     const result = await submitProposal();
-    toast(result.decision === "APPROVED" ? "Payout approved and recorded." : "Veto blocked this proposal.",
-      result.decision === "APPROVED" ? "success" : "info");
+    toast(result.decision === "APPROVED"
+      ? "Payout approved and recorded."
+      : `${result.reason} (${result.code})`, result.decision === "APPROVED" ? "success" : "info");
   } catch (error) { toast(error.message, "error"); }
   finally { setBusy(false); }
 }
@@ -319,8 +320,9 @@ async function manualVerify() {
   setBusy(true);
   try {
     const result = await verifyInvoice();
-    toast(result.decision === "APPROVED" ? "Simulated invoice evidence recorded." : "Invoice match was blocked.",
-      result.decision === "APPROVED" ? "success" : "info");
+    toast(result.decision === "APPROVED"
+      ? "Trusted demo invoice match recorded."
+      : `${result.reason} (${result.code})`, result.decision === "APPROVED" ? "success" : "info");
   } catch (error) { toast(error.message, "error"); }
   finally { setBusy(false); }
 }
@@ -340,13 +342,14 @@ async function guidedFlow() {
   byId("guided-progress").hidden = false;
   byId("guided-progress-list").replaceChildren();
   text("guided-progress-status", "Running");
-  const invoiceId = `INV-${Date.now().toString(36).toUpperCase()}`;
   ui.currency.value = "INR";
   syncCurrency();
   ui.merchant.value = "vendor_123";
-  ui.invoice.value = invoiceId;
-  ui.amount.value = "1.00";
   try {
+    const invoice = await api("/api/demo/invoices/next");
+    const invoiceId = invoice.invoice_id;
+    ui.invoice.value = invoiceId;
+    ui.amount.value = invoice.amount;
     const steps = [
       { label: "Invoice evidence recorded", expected: "APPROVED", run: () => verifyInvoice(eventIdFor("invoice"), invoiceId) },
       { label: "Wrong invoice rejected", expected: "REJECTED", run: () => submitProposal(eventIdFor("wrong"), { ...formAction(), invoice_id: `${invoiceId}-OTHER` }) },
@@ -369,8 +372,8 @@ async function guidedFlow() {
 
 const scenarios = {
   valid: { invoice: "INV-001", amount: "40.00" },
-  wrong: { invoice: "INV-002", amount: "40.00" },
-  over: { invoice: "INV-001", amount: "150.00" },
+  wrong: { invoice: "INV-002", amount: "1.00" },
+  over: { invoice: "INV-OVER-CAP", amount: "150.00" },
   duplicate: { invoice: "INV-001", amount: "40.00" },
 };
 

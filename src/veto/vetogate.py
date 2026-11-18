@@ -184,6 +184,24 @@ class VetoGate:
                         rule.id,
                         precondition.location or rule.location,
                     )
+                if invoice_required:
+                    verified_matches = [
+                        record.action
+                        for record in context_history
+                        if record.action.type == "invoice_match"
+                        and record.action.invoice_id == action.invoice_id
+                        and record.action.invoice_total is not None
+                    ]
+                    if verified_matches and not any(
+                        invoice.invoice_total == action.amount for invoice in verified_matches
+                    ):
+                        return Verdict(
+                            False,
+                            "invoice_amount_mismatch",
+                            f"payout amount does not match the verified total for invoice {action.invoice_id!r}",
+                            rule.id,
+                            precondition.location or rule.location,
+                        )
                 if invoice_required and any(
                     record.action.type == "payout" and record.action.invoice_id == action.invoice_id
                     for record in context_history

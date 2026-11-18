@@ -142,6 +142,23 @@ def test_invoice_precondition_requires_matching_unused_invoice():
     assert gate.evaluate(payout, now=NOW, executed=(invoice, paid)).code == "invoice_already_paid"
 
 
+def test_verified_invoice_total_must_match_payout_amount():
+    gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
+    invoice = ExecutedAction(
+        action=PaymentAction(
+            type="invoice_match", amount="0", currency="INR", merchant="vendor_123",
+            invoice_id="INV-001", invoice_total="40.00",
+        ),
+        executed_at=NOW,
+    )
+    assert gate.evaluate(
+        _action("41.00", invoice_id="INV-001"), now=NOW, executed=(invoice,)
+    ).code == "invoice_amount_mismatch"
+    assert gate.evaluate(
+        _action("40.00", invoice_id="INV-001"), now=NOW, executed=(invoice,)
+    ).approved
+
+
 def test_unidentified_invoice_match_cannot_authorize_payout():
     gate = VetoGate(load_policy_file(EXAMPLES / "vendor_payments.mdt"))
     prior = ExecutedAction(action=_action("0", action_type="invoice_match"), executed_at=NOW)

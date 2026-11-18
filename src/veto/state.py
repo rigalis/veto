@@ -31,7 +31,7 @@ class PendingStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS pending_actions (
@@ -84,9 +84,39 @@ class PendingStore:
         db.execute("DELETE FROM pending_actions WHERE event_id = ?", (event_id,))
 
     def entries(self) -> tuple[PendingIntent, ...]:
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             ids = [row[0] for row in db.execute("SELECT event_id FROM pending_actions ORDER BY approved_at")]
             return tuple(self._find_connection(db, event_id) for event_id in ids)
+
+
+class WebhookInbox:
+    """Idempotency records for authenticated provider webhook deliveries."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.path, timeout=30) as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS webhook_inbox ("
+                "provider TEXT NOT NULL, webhook_id TEXT NOT NULL, received_at TEXT NOT NULL, "
+                "PRIMARY KEY (provider, webhook_id))"
+            )
+
+    def contains(self, provider: str, webhook_id: str) -> bool:
+        with sqlite3.connect(self.path, timeout=30) as db:
+            row = db.execute(
+                "SELECT 1 FROM webhook_inbox WHERE provider = ? AND webhook_id = ?",
+                (provider, webhook_id),
+            ).fetchone()
+        return row is not None
+
+    def record(self, provider: str, webhook_id: str, received_at: datetime) -> None:
+        with sqlite3.connect(self.path, timeout=30) as db:
+            db.execute(
+                "INSERT OR IGNORE INTO webhook_inbox (provider, webhook_id, received_at) "
+                "VALUES (?, ?, ?)",
+                (provider, webhook_id, received_at.isoformat()),
+            )
 
 
 class HistoryStore:
@@ -100,7 +130,7 @@ class HistoryStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS confirmed_actions (
@@ -112,6 +142,7 @@ class HistoryStore:
                     merchant TEXT NOT NULL,
                     payment_id TEXT,
                     invoice_id TEXT,
+                    invoice_total TEXT,
                     executed_at TEXT NOT NULL
                 )
                 """
@@ -124,10 +155,14 @@ class HistoryStore:
                 row[1] for row in db.execute("PRAGMA table_info(confirmed_actions)")
             }:
                 db.execute("ALTER TABLE confirmed_actions ADD COLUMN invoice_id TEXT")
+            if "invoice_total" not in {
+                row[1] for row in db.execute("PRAGMA table_info(confirmed_actions)")
+            }:
+                db.execute("ALTER TABLE confirmed_actions ADD COLUMN invoice_total TEXT")
 
     def record_confirmed(self, event_id: str, executed: ExecutedAction) -> int:
         """Append once; an identical retry returns the original sequence id."""
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             return self._record_connection(db, event_id, executed)
 
     @staticmethod
@@ -148,20 +183,21 @@ class HistoryStore:
             action.merchant,
             action.payment_id,
             action.invoice_id,
+            str(action.invoice_total) if action.invoice_total is not None else None,
             executed.executed_at.isoformat(timespec="microseconds"),
         )
         db.execute(
             """
             INSERT INTO confirmed_actions
-                (event_id, action_type, amount, currency, merchant, payment_id, invoice_id, executed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (event_id, action_type, amount, currency, merchant, payment_id, invoice_id, invoice_total, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO NOTHING
             """,
             payload,
         )
         row = db.execute(
             """
-            SELECT seq, event_id, action_type, amount, currency, merchant, payment_id, invoice_id, executed_at
+            SELECT seq, event_id, action_type, amount, currency, merchant, payment_id, invoice_id, invoice_total, executed_at
             FROM confirmed_actions WHERE event_id = ?
             """,
             (event_id,),
@@ -176,14 +212,14 @@ class HistoryStore:
 
     def confirmed(self) -> tuple[ExecutedAction, ...]:
         """Return confirmed actions in insertion order for a gate evaluation."""
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=30) as db:
             return self._confirmed_connection(db)
 
     @staticmethod
     def _confirmed_connection(db: sqlite3.Connection) -> tuple[ExecutedAction, ...]:
         rows = db.execute(
             """
-            SELECT action_type, amount, currency, merchant, payment_id, invoice_id, executed_at
+            SELECT action_type, amount, currency, merchant, payment_id, invoice_id, invoice_total, executed_at
             FROM confirmed_actions ORDER BY seq
             """
         ).fetchall()
@@ -196,8 +232,9 @@ class HistoryStore:
                     merchant=merchant,
                     payment_id=payment_id,
                     invoice_id=invoice_id,
+                    invoice_total=invoice_total,
                 ),
                 executed_at=executed_at,
             )
-            for action_type, amount, currency, merchant, payment_id, invoice_id, executed_at in rows
+            for action_type, amount, currency, merchant, payment_id, invoice_id, invoice_total, executed_at in rows
         )
