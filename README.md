@@ -74,16 +74,71 @@ walkthrough of mandates, static checks, runtime enforcement, invoice evidence,
 execution and replay, audit integrity, pending recovery, currencies, provider
 demos, and the local API.
 
-## How a proposal is handled
+## Technical architecture
 
-```text
-mandate text -> Lark parser -> static checks -> typed policy
-                                             |
-agent proposal -> VetoGate -> simulated or test executor -> receipt
-                     |                               |
-                     +-> rejection audit             +-> confirmed history
-                     +-------------------------------+-> hash-chained audit
+The diagram separates mandate authoring and verification from the runtime
+payment path. The browser dashboard talks to the local demo API, which always
+uses simulated execution. The provider adapters are separate entry points for
+test or sandbox runs; they share the same policy gate and payment pipeline.
+
+```mermaid
+flowchart LR
+    subgraph authoring["mandate authoring and verification"]
+        M["mandate text"] --> P["Lark parser"] --> L["typed policy loader"]
+        L --> C["static policy checks"]
+        L -. "optional action-order check" .-> Z["Z3 / SMT"]
+        C --> R["policy used by runtime"]
+        Z -. "diagnostics" .-> R
+    end
+
+    subgraph runtime["shared policy and payment core"]
+        Q["payment proposal"] --> G["VetoGate"]
+        R --> G
+        H[("confirmed history")] --> G
+        G -->|"rejected"| A["hash-chained audit"]
+        G -->|"approved"| I["persist pending intent"]
+        I --> X["payment pipeline"] --> O{"confirmed receipt?"}
+        O -->|"yes"| F["confirm action + append audit"]
+        O -->|"no / unclear"| N["retain pending intent"]
+        O -->|"definite failure"| D["audit execution error"]
+        F --> H
+        F --> A
+        N --> RC["reconcile or retry same event"]
+        RC --> X
+        D --> A
+    end
+
+    subgraph entrypoints["demo entry points"]
+        U["browser dashboard"] --> API["local FastAPI demo"]
+        API -->|"proposal"| Q
+        API -. "always uses" .-> S["simulated executor"]
+        CMD["provider demo command"] -->|"proposal"| Q
+        X -->|"dashboard executor"| S
+        X -->|"provider demo executor"| T["RazorpayX / Razorpay / Modern Treasury sandbox"]
+    end
+
+    subgraph storage["one local SQLite database"]
+        H
+        I
+        A
+    end
 ```
+
+Mandates are parsed into typed policy data before proposals arrive. Static
+checks diagnose local policy conflicts; the optional SMT check examines
+action-order constraints. At runtime, VetoGate evaluates a proposal against
+the policy and confirmed history. Only approved proposals get a durable
+pending intent before the executor is called. A matching confirmed receipt
+allows the pipeline to atomically write confirmed history and the audit event;
+an unclear result stays pending for reconciliation and does not count toward
+future policy history. Rejected decisions and definite execution failures are
+audited without becoming confirmed actions.
+
+The API and dashboard shown here are local demo components. Provider adapters
+are independently invoked sandbox/test integrations, not live services behind
+the dashboard. SQLite transactions serialize this single-process demo flow;
+this design does not provide distributed coordination or production-grade
+recovery.
 
 ## Current state
 
