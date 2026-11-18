@@ -31,7 +31,8 @@ pluggable executor, confirmed history, and audit records. A simulated executor
 and command-line demo exercise that path. RazorpayX payout, Razorpay Payments
 refund, and Modern Treasury sandbox payout adapters have mocked HTTP tests.
 The Modern Treasury payout and Razorpay Payments refund paths also have
-guarded test-mode commands.
+guarded test-mode commands. A local simulated API exposes decisions and audit
+records for the planned browser dashboard.
 
 ## Mandate syntax
 
@@ -223,6 +224,49 @@ invoice. It needs no keys or money. Pass `--db ./invoice-demo.sqlite3` to keep
 the audit and confirmed history; rerunning with the same database replays all
 four decisions.
 
+### Run the local demo API
+
+Install the `server` extra, then start the API from the repository root:
+
+```bash
+python -m pip install -e '.[server]'
+python -m veto.api
+```
+
+Open `http://127.0.0.1:8000/docs` to try the endpoints. The server binds to
+your machine's loopback address, uses simulated execution only, and never
+loads payment-provider credentials. Its default SQLite database is
+`data/veto-api-demo.sqlite3`; pass `--db ./another-demo.sqlite3` for an isolated
+run. The endpoints are:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/status` | Show mode, counts, and audit integrity |
+| `GET /api/policy` | Show the fixed demo mandate |
+| `POST /api/demo/invoice-matches` | Record simulated invoice evidence |
+| `POST /api/proposals` | Evaluate a payout through the real pipeline |
+| `GET /api/audit` | Inspect recorded decisions |
+| `GET /api/pending` | Inspect unresolved local intents |
+
+The invoice endpoint accepts `{"event_id":"invoice-1","invoice_id":"INV-001"}`.
+The proposal endpoint accepts:
+
+```json
+{
+  "event_id": "payout-1",
+  "action": {
+    "type": "payout",
+    "amount": "40.00",
+    "currency": "INR",
+    "merchant": "vendor_123",
+    "invoice_id": "INV-001"
+  }
+}
+```
+
+Use a fresh event ID for a different proposal. This local API has no user
+authentication and is intended for the demo, not a public deployment.
+
 ## RazorpayX test adapter
 
 The [RazorpayX executor](src/veto/razorpayx.py) can be supplied to the payment
@@ -412,8 +456,9 @@ python -m pip install -e '.[dev,smt,server]'
 python -c 'import veto; print(veto.__file__)'
 ```
 
-The `smt` extra provides Z3 for policy checks, `server` provides the planned
-API, and `dev` provides pytest. These extras are installed during development;
+The `smt` extra provides Z3 for policy checks, `server` provides the local
+demo API, and `dev` provides pytest. These extras are installed during
+development;
 the core package can also be installed with `python -m pip install -e .`.
 
 Run the current test suite with `python -m pytest -q`. GitHub Actions runs it
